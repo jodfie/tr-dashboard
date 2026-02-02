@@ -1,0 +1,306 @@
+import { create } from 'zustand'
+import type { RecentCallInfo, Transmission } from '@/api/types'
+import { getCallAudioUrl, getCallTransmissions } from '@/api/client'
+
+// Explicit state machine for audio playback
+export type PlaybackState =
+  | 'idle'      // No call loaded
+  | 'loading'   // Call set, waiting for audio to load
+  | 'playing'   // Audio actively playing
+  | 'paused'    // User paused
+  | 'blocked'   // Autoplay blocked, awaiting user gesture
+  | 'error'     // Playback failed
+
+export interface QueuedCall {
+  id: number | string
+  callId: string               // Composite format: "sysid:tgid:timestamp"
+  system: string
+  sysid?: string
+  tgid: number
+  tgAlphaTag?: string
+  duration: number
+  audioUrl: string
+}
+
+interface AudioState {
+  // Playback state machine
+  playbackState: PlaybackState
+
+  // Current call data
+  currentCall: QueuedCall | null
+  transmissions: Transmission[]
+  unitTags: Map<number, string>
+
+  // Playback position (updated by audio element)
+  currentTime: number
+  duration: number
+
+  // Volume (user preference)
+  volume: number
+  muted: boolean
+
+  // Queue
+  queue: QueuedCall[]
+
+  // Auto-advance to next in queue
+  autoPlay: boolean
+
+  // History for "previous" functionality
+  history: QueuedCall[]
+
+  // Actions - called by UI
+  loadCall: (call: RecentCallInfo | QueuedCall) => void
+  requestPlay: () => void
+  requestPause: () => void
+  requestSeek: (time: number) => void
+  setVolume: (volume: number) => void
+  toggleMute: () => void
+  skipNext: () => void
+  skipPrevious: () => void
+  addToQueue: (call: RecentCallInfo) => void
+  removeFromQueue: (index: number) => void
+  clearQueue: () => void
+  setAutoPlay: (enabled: boolean) => void
+
+  // Actions - called by audio element event handlers
+  onLoadStart: () => void
+  onCanPlay: () => void
+  onPlay: () => void
+  onPause: () => void
+  onEnded: () => void
+  onError: () => void
+  onTimeUpdate: (time: number, duration: number) => void
+  onAutoplayBlocked: () => void
+
+  // User gesture to unlock blocked audio
+  unlockAndPlay: () => void
+
+  // For transmissions loading
+  loadTransmissions: (callId: string | number) => Promise<void>
+}
+
+function toQueuedCall(call: RecentCallInfo | QueuedCall): QueuedCall {
+  if ('audioUrl' in call) {
+    return call
+  }
+
+  const callId = call.call_id ?? (call.id != null ? String(call.id) : '')
+  return {
+    id: call.id ?? callId,
+    callId,
+    system: call.system,
+    sysid: call.sysid,
+    tgid: call.tgid,
+    tgAlphaTag: call.tg_alpha_tag,
+    duration: call.duration,
+    audioUrl: call.audio_url ?? getCallAudioUrl(callId),
+  }
+}
+
+export const useAudioStore = create<AudioState>((set, get) => ({
+  playbackState: 'idle',
+  currentCall: null,
+  transmissions: [],
+  unitTags: new Map(),
+  currentTime: 0,
+  duration: 0,
+  volume: 0.8,
+  muted: false,
+  queue: [],
+  autoPlay: true,
+  history: [],
+
+  loadCall: (call) => {
+    const state = get()
+    const queued = toQueuedCall(call)
+
+    // Extract unit tags if available
+    const unitTags = new Map<number, string>()
+    if ('units' in call && Array.isArray(call.units)) {
+      for (const unit of call.units as Array<{ unit_id?: number; unit_tag?: string; unit_rid?: number; alpha_tag?: string }>) {
+        const unitId = unit.unit_id ?? unit.unit_rid
+        const tag = unit.unit_tag ?? unit.alpha_tag
+        if (unitId && tag) {
+          unitTags.set(unitId, tag)
+        }
+      }
+    }
+
+    // If we have a current call, add it to history
+    const history = state.currentCall
+      ? [state.currentCall, ...state.history].slice(0, 20)
+      : state.history
+
+    set({
+      currentCall: queued,
+      transmissions: [],
+      unitTags,
+      playbackState: 'loading',
+      currentTime: 0,
+      duration: queued.duration,
+      history,
+    })
+
+    get().loadTransmissions(queued.callId)
+  },
+
+  requestPlay: () => {
+    const { playbackState } = get()
+    // Only valid from paused state - audio element will confirm via onPlay
+    if (playbackState === 'paused') {
+      // Don't set playing here - wait for onPlay event
+      // The AudioPlayer component will call audio.play()
+    }
+  },
+
+  requestPause: () => {
+    const { playbackState } = get()
+    if (playbackState === 'playing') {
+      // Don't set paused here - wait for onPause event
+      // The AudioPlayer component will call audio.pause()
+    }
+  },
+
+  requestSeek: (time) => {
+    set({ currentTime: time })
+  },
+
+  setVolume: (volume) => {
+    set({ volume: Math.max(0, Math.min(1, volume)) })
+  },
+
+  toggleMute: () => {
+    set((state) => ({ muted: !state.muted }))
+  },
+
+  skipNext: () => {
+    const { queue } = get()
+    if (queue.length > 0) {
+      const [next, ...rest] = queue
+      set({ queue: rest })
+      get().loadCall(next)
+    } else {
+      // No more in queue - go to idle
+      set({
+        playbackState: 'idle',
+        currentCall: null,
+        transmissions: [],
+        unitTags: new Map(),
+        currentTime: 0,
+        duration: 0,
+      })
+    }
+  },
+
+  skipPrevious: () => {
+    const { currentTime, history } = get()
+    // If more than 3 seconds in, restart current track
+    if (currentTime > 3) {
+      set({ currentTime: 0 })
+    } else if (history.length > 0) {
+      // Go to previous call
+      const [prev, ...rest] = history
+      set({ history: rest })
+      get().loadCall(prev)
+    }
+  },
+
+  addToQueue: (call) => {
+    const queued = toQueuedCall(call)
+    const { currentCall, playbackState } = get()
+
+    // If nothing is playing/loading/blocked, play immediately
+    if (!currentCall || playbackState === 'idle') {
+      get().loadCall(queued)
+    } else {
+      set((state) => ({ queue: [...state.queue, queued] }))
+    }
+  },
+
+  removeFromQueue: (index) => {
+    set((state) => ({
+      queue: state.queue.filter((_, i) => i !== index),
+    }))
+  },
+
+  clearQueue: () => set({ queue: [] }),
+
+  setAutoPlay: (enabled) => set({ autoPlay: enabled }),
+
+  // Audio element event handlers - these are the source of truth for playback state
+  onLoadStart: () => {
+    const { playbackState } = get()
+    if (playbackState !== 'blocked') {
+      set({ playbackState: 'loading' })
+    }
+  },
+
+  onCanPlay: () => {
+    // Audio is ready - component will attempt to play
+    // State transition happens in onPlay or onAutoplayBlocked
+  },
+
+  onPlay: () => {
+    set({ playbackState: 'playing' })
+  },
+
+  onPause: () => {
+    const { playbackState } = get()
+    // Only transition to paused if we were playing
+    // Ignore pause events during loading/blocked states
+    if (playbackState === 'playing') {
+      set({ playbackState: 'paused' })
+    }
+  },
+
+  onEnded: () => {
+    const { autoPlay } = get()
+    if (autoPlay) {
+      // Auto-advance to next in queue
+      get().skipNext()
+    } else {
+      // Stop at current call, don't auto-advance
+      set({ playbackState: 'paused' })
+    }
+  },
+
+  onError: () => {
+    const { queue } = get()
+    console.error('Audio playback error, skipping to next')
+    // Skip to next on error
+    if (queue.length > 0) {
+      get().skipNext()
+    } else {
+      set({ playbackState: 'error' })
+    }
+  },
+
+  onTimeUpdate: (time, duration) => {
+    set({ currentTime: time, duration })
+  },
+
+  onAutoplayBlocked: () => {
+    set({ playbackState: 'blocked' })
+  },
+
+  unlockAndPlay: () => {
+    // Called when user clicks to unlock audio
+    // Component will handle the actual play() call
+    // State will update via onPlay when successful
+  },
+
+  loadTransmissions: async (callId) => {
+    try {
+      const response = await getCallTransmissions(callId)
+      set({ transmissions: response.transmissions })
+    } catch (err) {
+      console.error('Failed to load transmissions:', err)
+    }
+  },
+}))
+
+// Selectors for common derived state
+export const selectIsPlaying = (state: AudioState) => state.playbackState === 'playing'
+export const selectIsBlocked = (state: AudioState) => state.playbackState === 'blocked'
+export const selectIsLoading = (state: AudioState) => state.playbackState === 'loading'
+export const selectHasCall = (state: AudioState) => state.currentCall !== null
