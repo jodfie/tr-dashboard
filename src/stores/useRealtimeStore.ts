@@ -313,6 +313,11 @@ export function initializeRealtimeConnection(): () => void {
   const unsubAudio = ws.on('audio_available', (data) => {
     store.handleAudioAvailable(data)
 
+    // Construct correct call_id: sysid:tgid:timestamp
+    // Backend sends call_id with system short_name, we need sysid
+    const timestamp = data.call_id.split(':').pop() || ''
+    const correctCallId = `${data.sysid}:${data.talkgroup}:${timestamp}`
+
     // Cache talkgroup alpha tag if available
     if (data.sysid && data.talkgroup_alpha_tag) {
       useTalkgroupCache.getState().addFromCall(data.sysid, data.talkgroup, data.talkgroup_alpha_tag)
@@ -320,7 +325,7 @@ export function initializeRealtimeConnection(): () => void {
 
     // Schedule transcription fetch after delay (gives backend time to process)
     setTimeout(() => {
-      useTranscriptionCache.getState().fetchTranscription(data.call_id)
+      useTranscriptionCache.getState().fetchTranscription(correctCallId)
     }, TRANSCRIPTION_FETCH_DELAY_MS)
 
     // Check if this talkgroup is being monitored
@@ -332,7 +337,7 @@ export function initializeRealtimeConnection(): () => void {
     if (monitorState.isMonitoring && isMonitored) {
       // Create a call object for playback
       const callForPlayback: RecentCallInfo = {
-        call_id: data.call_id,
+        call_id: correctCallId,
         tr_call_id: data.tr_call_id,
         call_num: 0,
         start_time: new Date(Date.now() - data.duration * 1000).toISOString(),
@@ -345,7 +350,7 @@ export function initializeRealtimeConnection(): () => void {
         freq: 0,
         encrypted: false,
         emergency: false,
-        audio_url: `/api/v1/calls/${data.call_id}/audio`,
+        audio_url: `/api/v1/calls/${correctCallId}/audio`,
         has_audio: true,
         units: [],
       }
