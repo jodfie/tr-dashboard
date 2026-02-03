@@ -6,6 +6,7 @@ import { useMonitorStore } from '@/stores/useMonitorStore'
 import { useAudioStore } from '@/stores/useAudioStore'
 import { formatDecodeRate } from '@/lib/utils'
 import { cn } from '@/lib/utils'
+import { APP_VERSION } from '@/version'
 
 interface HeaderProps {
   onToggleSidebar: () => void
@@ -65,6 +66,7 @@ export function Header({ onToggleSidebar, onOpenCommand }: HeaderProps) {
         >
           <span className="text-primary">◉</span>
           <span>tr-dashboard</span>
+          <span className="text-xs font-normal text-muted-foreground">v{APP_VERSION}</span>
         </button>
       </div>
 
