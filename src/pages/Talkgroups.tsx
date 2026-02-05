@@ -181,7 +181,7 @@ export default function Talkgroups() {
             No talkgroups found
           </div>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {talkgroups.map((tg) => {
               const tgKey = talkgroupKey(tg.sysid, tg.tgid)
               const monitored = isMonitored(tg.sysid, tg.tgid)
@@ -189,18 +189,18 @@ export default function Talkgroups() {
 
               return (
                 <Card key={tgKey} className="hover:bg-accent/50 transition-colors">
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between">
-                      <Link to={`/talkgroups/${tg.sysid}:${tg.tgid}`} className="flex-1">
-                        <h3 className="font-semibold hover:underline">
+                  <CardContent className="p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <Link to={`/talkgroups/${tg.sysid}:${tg.tgid}`} className="flex-1 min-w-0">
+                        <h3 className="font-semibold hover:underline truncate">
                           {getTalkgroupDisplayName(tg.tgid, tg.alpha_tag)}
                         </h3>
-                        <p className="mt-1 text-sm text-muted-foreground">
+                        <p className="text-xs text-muted-foreground truncate">
                           {tg.group || 'Uncategorized'}
                         </p>
                       </Link>
 
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-0.5 shrink-0">
                         <button
                           onClick={() => toggleTalkgroupMonitor(tg.sysid, tg.tgid)}
                           className={`p-1 ${
@@ -208,22 +208,16 @@ export default function Talkgroups() {
                               ? 'text-live'
                               : 'text-muted-foreground hover:text-live'
                           }`}
-                          title={
-                            monitored
-                              ? 'Stop monitoring'
-                              : 'Monitor this talkgroup'
-                          }
+                          title={monitored ? 'Stop monitoring' : 'Monitor'}
                         >
                           <svg
                             xmlns="http://www.w3.org/2000/svg"
-                            width="18"
-                            height="18"
+                            width="16"
+                            height="16"
                             viewBox="0 0 24 24"
                             fill={monitored ? 'currentColor' : 'none'}
                             stroke="currentColor"
                             strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
                           >
                             <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
                             <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
@@ -237,16 +231,12 @@ export default function Talkgroups() {
                               ? 'text-primary'
                               : 'text-muted-foreground hover:text-primary'
                           }`}
-                          title={
-                            favorite
-                              ? 'Remove from favorites'
-                              : 'Add to favorites'
-                          }
+                          title={favorite ? 'Unfavorite' : 'Favorite'}
                         >
                           <svg
                             xmlns="http://www.w3.org/2000/svg"
-                            width="18"
-                            height="18"
+                            width="16"
+                            height="16"
                             viewBox="0 0 24 24"
                             fill={favorite ? 'currentColor' : 'none'}
                             stroke="currentColor"
@@ -258,42 +248,26 @@ export default function Talkgroups() {
                       </div>
                     </div>
 
-                    <div className="mt-3 flex flex-wrap items-center gap-2">
-                      <Badge variant="outline" className="font-mono">
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
+                      <Badge variant="outline" className="font-mono text-xs px-1.5 py-0">
                         {tg.tgid}
                       </Badge>
-                      {tg.tag && <Badge variant="secondary">{tg.tag}</Badge>}
+                      {tg.tag && <Badge variant="secondary" className="text-xs px-1.5 py-0">{tg.tag}</Badge>}
                       {tg.mode === 'D' && (
-                        <Badge variant="outline" className="text-xs">
-                          Digital
-                        </Badge>
+                        <Badge variant="outline" className="text-xs px-1.5 py-0">D</Badge>
                       )}
                       {tg.mode === 'A' && (
-                        <Badge variant="outline" className="text-xs">
-                          Analog
-                        </Badge>
+                        <Badge variant="outline" className="text-xs px-1.5 py-0">A</Badge>
                       )}
                     </div>
 
-                    {/* Stats */}
-                    <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                      <div>
-                        <span className="font-medium text-foreground">{tg.call_count?.toLocaleString() ?? '—'}</span> calls
-                      </div>
-                      <div>
-                        <span className="font-medium text-foreground">{tg.unit_count?.toLocaleString() ?? '—'}</span> units
-                      </div>
-                      <div>
-                        <span className="font-medium text-foreground">{tg.calls_1h ?? '—'}</span> /1h
-                      </div>
-                      <div>
-                        <span className="font-medium text-foreground">{tg.calls_24h?.toLocaleString() ?? '—'}</span> /24h
-                      </div>
+                    {/* Stats - single row */}
+                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                      <span><span className="text-foreground">{tg.calls_1h ?? 0}</span>/1h</span>
+                      <span><span className="text-foreground">{tg.calls_24h?.toLocaleString() ?? 0}</span>/24h</span>
+                      <span><span className="text-foreground">{tg.unit_count ?? 0}</span> units</span>
+                      <span className="text-muted-foreground/70">{formatRelativeTime(tg.last_seen)}</span>
                     </div>
-
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      Last active: {formatRelativeTime(tg.last_seen)}
-                    </p>
                   </CardContent>
                 </Card>
               )
