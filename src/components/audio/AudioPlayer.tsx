@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useHotkeys } from 'react-hotkeys-hook'
 import { Button } from '@/components/ui/button'
@@ -15,6 +15,8 @@ export function AudioPlayer() {
   // Ref to track the current audio URL to detect when we need to reload
   const currentUrlRef = useRef<string | null>(null)
 
+  const [showHistory, setShowHistory] = useState(false)
+
   const {
     playbackState,
     currentCall,
@@ -25,12 +27,14 @@ export function AudioPlayer() {
     volume,
     muted,
     queue,
+    history,
     // Actions
     requestSeek,
     setVolume,
     toggleMute,
     skipNext,
     skipPrevious,
+    loadCall,
     // Event handlers
     onPlay,
     onPause,
@@ -534,6 +538,35 @@ export function AudioPlayer() {
           <div className="text-xs text-muted-foreground">{queue.length} in queue</div>
         )}
 
+        {/* History button */}
+        {history.length > 0 && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowHistory(!showHistory)}
+            className="text-xs text-muted-foreground"
+            title="Play history"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="mr-1"
+            >
+              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+              <path d="M3 3v5h5" />
+              <path d="M12 7v5l4 2" />
+            </svg>
+            {history.length}
+          </Button>
+        )}
+
         {/* Keyboard hints */}
         <div className="hidden items-center gap-1 text-xs text-muted-foreground xl:flex">
           <kbd className="rounded border bg-muted px-1.5 py-0.5">J</kbd>
@@ -546,6 +579,44 @@ export function AudioPlayer() {
       {transmissions && transmissions.length > 0 && (
         <div className="mt-1 ml-[136px]">
           <TransmissionLegend transmissions={transmissions} unitTags={unitTags} />
+        </div>
+      )}
+
+      {/* History panel */}
+      {showHistory && history.length > 0 && (
+        <div className="mt-2 border-t border-border pt-2">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-medium text-muted-foreground">Play History</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowHistory(false)}
+              className="h-5 w-5 p-0"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M18 6 6 18M6 6l12 12" />
+              </svg>
+            </Button>
+          </div>
+          <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
+            {history.map((call, index) => (
+              <button
+                key={`${call.callId}-${index}`}
+                onClick={() => {
+                  playAttemptedRef.current = false
+                  loadCall(call)
+                  setShowHistory(false)
+                }}
+                className="flex items-center gap-1.5 rounded bg-muted/50 px-2 py-1 text-xs hover:bg-muted transition-colors"
+                title={`${call.tgAlphaTag || `TG ${call.tgid}`} - ${call.system}`}
+              >
+                <span className="font-medium truncate max-w-[120px]">
+                  {call.tgAlphaTag || `TG ${call.tgid}`}
+                </span>
+                <span className="text-muted-foreground">{formatDuration(call.duration)}</span>
+              </button>
+            ))}
+          </div>
         </div>
       )}
     </div>

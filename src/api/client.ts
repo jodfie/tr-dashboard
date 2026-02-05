@@ -100,6 +100,8 @@ export async function getSystemTalkgroups(
 export interface TalkgroupQueryParams {
   sysid?: string           // Filter by P25 system ID
   search?: string
+  group?: string           // Filter by talkgroup group
+  tag?: string             // Filter by talkgroup tag
   sort?: 'alpha_tag' | 'tgid' | 'last_seen' | 'first_seen' | 'group' | 'call_count' | 'calls_1h' | 'calls_24h' | 'unit_count'
   sort_dir?: 'asc' | 'desc'
   limit?: number

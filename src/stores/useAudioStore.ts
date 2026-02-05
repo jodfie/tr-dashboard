@@ -274,13 +274,13 @@ export const useAudioStore = create<AudioState>((set, get) => ({
   },
 
   onEnded: () => {
-    const { autoPlay } = get()
-    if (autoPlay) {
+    const { autoPlay, queue } = get()
+    if (autoPlay && queue.length > 0) {
       // Auto-advance to next in queue
       get().skipNext()
     } else {
-      // Stop at current call, don't auto-advance
-      set({ playbackState: 'paused' })
+      // No more in queue or autoPlay disabled - stay on current call for replay
+      set({ playbackState: 'paused', currentTime: 0 })
     }
   },
 

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -7,17 +7,56 @@ import { getTalkgroups, getSystems } from '@/api/client'
 import type { Talkgroup, System } from '@/api/types'
 import { useFilterStore } from '@/stores/useFilterStore'
 import { useMonitorStore } from '@/stores/useMonitorStore'
+import { useRealtimeStore } from '@/stores/useRealtimeStore'
 import { useTalkgroupCache, talkgroupKey } from '@/stores/useTalkgroupCache'
 import { formatRelativeTime } from '@/lib/utils'
 
 const DEFAULT_PAGE_SIZE = 30
 
+// Color mapping for talkgroup tags/categories
+function getTagColor(tag: string | undefined, group: string | undefined): string {
+  const t = (tag || '').toLowerCase()
+  const g = (group || '').toLowerCase()
+
+  // Law enforcement - blue
+  if (t.includes('law') || t.includes('police') || g.includes('law') || g.includes('police')) {
+    return 'border-l-blue-500'
+  }
+  // Fire - red/orange
+  if (t.includes('fire') || g.includes('fire')) {
+    return 'border-l-red-500'
+  }
+  // EMS - green
+  if (t.includes('ems') || t.includes('medical') || t.includes('hospital') || g.includes('ems') || g.includes('medical')) {
+    return 'border-l-green-500'
+  }
+  // Dispatch (multi-agency) - purple
+  if (t.includes('dispatch') || t.includes('interop') || t.includes('multi')) {
+    return 'border-l-purple-500'
+  }
+  // Public works, transportation - amber
+  if (t.includes('public') || t.includes('works') || t.includes('transport') || t.includes('highway') || g.includes('public') || g.includes('transport')) {
+    return 'border-l-amber-500'
+  }
+  // Schools, security - cyan
+  if (t.includes('school') || t.includes('security') || t.includes('campus') || g.includes('school')) {
+    return 'border-l-cyan-500'
+  }
+  // Corrections - slate
+  if (t.includes('corrections') || t.includes('jail') || t.includes('prison')) {
+    return 'border-l-slate-500'
+  }
+  // Default - muted
+  return 'border-l-muted-foreground/30'
+}
+
 export default function Talkgroups() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const [talkgroups, setTalkgroups] = useState<Talkgroup[]>([])
+  const [allTalkgroups, setAllTalkgroups] = useState<Talkgroup[]>([])
   const [systems, setSystems] = useState<System[]>([])
+  const [availableGroups, setAvailableGroups] = useState<string[]>([])
+  const [availableTags, setAvailableTags] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
-  const [totalCount, setTotalCount] = useState(0)
 
   // Subscribe to state to trigger re-renders, then get actions separately
   const favoriteTalkgroups = useFilterStore((s) => s.favoriteTalkgroups)
@@ -31,12 +70,29 @@ export default function Talkgroups() {
   void monitoredTalkgroups
   const addTalkgroupsToCache = useTalkgroupCache((s) => s.addTalkgroups)
 
+  // Subscribe to active calls for real-time highlighting
+  const activeCalls = useRealtimeStore((s) => s.activeCalls)
+
+  // Timer tick to update "recently active" badges (re-render every 5 seconds)
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    const hasRecentCalls = Array.from(activeCalls.values()).some(
+      (call) => !call.isActive && call.endedAt && (Date.now() - call.endedAt) < 30000
+    )
+    if (!hasRecentCalls) return
+
+    const interval = setInterval(() => setTick((t) => t + 1), 5000)
+    return () => clearInterval(interval)
+  }, [activeCalls])
+
   const page = parseInt(searchParams.get('page') || '1', 10)
   const pageSize = parseInt(searchParams.get('size') || String(DEFAULT_PAGE_SIZE), 10)
   const search = searchParams.get('search') || ''
   const sysidFilter = searchParams.get('sysid') || ''
-  const sortBy = (searchParams.get('sort') as 'alpha_tag' | 'tgid' | 'last_seen' | 'call_count' | 'calls_1h' | 'calls_24h' | 'unit_count') || 'alpha_tag'
-  const sortDir = (searchParams.get('dir') as 'asc' | 'desc') || 'asc'
+  const groupFilter = searchParams.get('group') || ''
+  const tagFilter = searchParams.get('tag') || ''
+  const sortBy = (searchParams.get('sort') as 'alpha_tag' | 'tgid' | 'last_seen' | 'call_count' | 'calls_1h' | 'calls_24h' | 'unit_count') || 'calls_24h'
+  const sortDir = (searchParams.get('dir') as 'asc' | 'desc') || 'desc'
 
   const offset = (page - 1) * pageSize
 
@@ -45,26 +101,116 @@ export default function Talkgroups() {
     getSystems().then((res) => setSystems(res.sites)).catch(console.error)
   }, [])
 
-  // Fetch talkgroups
+  // Fetch all talkgroups once on mount (paginated to get all)
   useEffect(() => {
     setLoading(true)
-    getTalkgroups({
-      sysid: sysidFilter || undefined,
-      search: search || undefined,
-      sort: sortBy,
-      sort_dir: sortDir,
-      limit: pageSize,
-      offset,
-    })
-      .then((res) => {
+
+    async function fetchAllTalkgroups() {
+      const allTgs: Talkgroup[] = []
+      const batchSize = 1000
+      let offset = 0
+      let hasMore = true
+
+      while (hasMore) {
+        const res = await getTalkgroups({ limit: batchSize, offset })
         const tgs = res.talkgroups || []
-        setTalkgroups(tgs)
-        setTotalCount(res.count || tgs.length)
+        allTgs.push(...tgs)
+
+        // If we got fewer than batchSize, we've reached the end
+        if (tgs.length < batchSize) {
+          hasMore = false
+        } else {
+          offset += batchSize
+        }
+      }
+
+      return allTgs
+    }
+
+    fetchAllTalkgroups()
+      .then((tgs) => {
+        setAllTalkgroups(tgs)
         addTalkgroupsToCache(tgs)
+
+        // Extract unique groups and tags for filters
+        const groups = new Set<string>()
+        const tags = new Set<string>()
+        for (const tg of tgs) {
+          if (tg.group) groups.add(tg.group)
+          if (tg.tag) tags.add(tg.tag)
+        }
+        setAvailableGroups(Array.from(groups).sort())
+        setAvailableTags(Array.from(tags).sort())
       })
       .catch(console.error)
       .finally(() => setLoading(false))
-  }, [page, pageSize, search, sysidFilter, sortBy, sortDir, offset, addTalkgroupsToCache])
+  }, [addTalkgroupsToCache])
+
+  // Client-side filtering, sorting, and pagination
+  const filteredAndSorted = (() => {
+    let result = [...allTalkgroups]
+
+    // Filter by system
+    if (sysidFilter) {
+      result = result.filter((tg) => tg.sysid === sysidFilter)
+    }
+
+    // Filter by group
+    if (groupFilter) {
+      result = result.filter((tg) => tg.group === groupFilter)
+    }
+
+    // Filter by tag
+    if (tagFilter) {
+      result = result.filter((tg) => tg.tag === tagFilter)
+    }
+
+    // Search filter
+    if (search) {
+      const searchLower = search.toLowerCase()
+      result = result.filter((tg) =>
+        (tg.alpha_tag && tg.alpha_tag.toLowerCase().includes(searchLower)) ||
+        (tg.description && tg.description.toLowerCase().includes(searchLower)) ||
+        (tg.group && tg.group.toLowerCase().includes(searchLower)) ||
+        (tg.tag && tg.tag.toLowerCase().includes(searchLower)) ||
+        String(tg.tgid).includes(search)
+      )
+    }
+
+    // Sort
+    result.sort((a, b) => {
+      let cmp = 0
+      switch (sortBy) {
+        case 'alpha_tag':
+          cmp = (a.alpha_tag || '').localeCompare(b.alpha_tag || '')
+          break
+        case 'tgid':
+          cmp = a.tgid - b.tgid
+          break
+        case 'last_seen':
+          cmp = new Date(a.last_seen || 0).getTime() - new Date(b.last_seen || 0).getTime()
+          break
+        case 'call_count':
+          cmp = (a.call_count || 0) - (b.call_count || 0)
+          break
+        case 'calls_1h':
+          cmp = (a.calls_1h || 0) - (b.calls_1h || 0)
+          break
+        case 'calls_24h':
+          cmp = (a.calls_24h || 0) - (b.calls_24h || 0)
+          break
+        case 'unit_count':
+          cmp = (a.unit_count || 0) - (b.unit_count || 0)
+          break
+      }
+      return sortDir === 'desc' ? -cmp : cmp
+    })
+
+    return result
+  })()
+
+  const totalCount = filteredAndSorted.length
+  const talkgroups = filteredAndSorted.slice(offset, offset + pageSize)
 
   const updateParam = useCallback(
     (key: string, value: string) => {
@@ -134,6 +280,32 @@ export default function Talkgroups() {
             </select>
 
             <select
+              value={groupFilter}
+              onChange={(e) => updateParam('group', e.target.value)}
+              className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+            >
+              <option value="">All groups</option>
+              {availableGroups.map((group) => (
+                <option key={group} value={group}>
+                  {group}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={tagFilter}
+              onChange={(e) => updateParam('tag', e.target.value)}
+              className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+            >
+              <option value="">All tags</option>
+              {availableTags.map((tag) => (
+                <option key={tag} value={tag}>
+                  {tag}
+                </option>
+              ))}
+            </select>
+
+            <select
               value={`${sortBy}:${sortDir}`}
               onChange={(e) => {
                 const [sort, dir] = e.target.value.split(':')
@@ -180,16 +352,37 @@ export default function Talkgroups() {
             No talkgroups found
           </div>
         ) : (
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
             {talkgroups.map((tg) => {
               const tgKey = talkgroupKey(tg.sysid, tg.tgid)
               const monitored = isMonitored(tg.sysid, tg.tgid)
               const favorite = isFavorite(tg.sysid, tg.tgid)
 
+              const tagColor = getTagColor(tg.tag, tg.group)
+
+              // Check if this talkgroup has an active or recently ended call
+              const activeCall = Array.from(activeCalls.values()).find(
+                (call) => call.sysid === tg.sysid && call.talkgroup === tg.tgid
+              )
+              const hasActiveCall = activeCall?.isActive ?? false
+              // Show "recent" badge for 30 seconds after call ends
+              const isRecentlyActive = activeCall && !activeCall.isActive && activeCall.endedAt &&
+                (Date.now() - activeCall.endedAt) < 30000
+
+              const bgClass = hasActiveCall
+                ? 'bg-live/15 ring-1 ring-live/50'
+                : isRecentlyActive
+                  ? 'bg-amber-500/10 ring-1 ring-amber-500/30'
+                  : monitored
+                    ? 'bg-live/5'
+                    : favorite
+                      ? 'bg-primary/5'
+                      : 'bg-card'
+
               return (
                 <div
                   key={tgKey}
-                  className="flex gap-2 rounded-md border bg-card p-2 hover:bg-accent/50 transition-colors"
+                  className={`flex gap-2 rounded-md border border-l-4 ${tagColor} ${bgClass} p-2 hover:bg-accent/50 transition-colors ${hasActiveCall ? 'animate-pulse' : ''}`}
                 >
                   {/* Action buttons - vertical on left */}
                   <div className="flex flex-col gap-0.5 shrink-0">
@@ -225,28 +418,39 @@ export default function Talkgroups() {
 
                   {/* Content */}
                   <Link to={`/talkgroups/${tg.sysid}:${tg.tgid}`} className="flex-1 min-w-0">
-                    {/* Row 1: Name + TGID + mode */}
+                    {/* Row 1: Name + TGID + mode + tag */}
                     <div className="flex items-center gap-1.5">
                       <span className="font-medium text-sm truncate hover:underline">
                         {tg.alpha_tag || `TG ${tg.tgid}`}
                       </span>
                       <span className="text-xs font-mono text-muted-foreground shrink-0">{tg.tgid}</span>
                       {tg.mode && <span className="text-xs text-muted-foreground shrink-0">{tg.mode}</span>}
+                      {tg.tag && <span className="text-xs text-muted-foreground/70 shrink-0 ml-auto">{tg.tag}</span>}
                     </div>
                     {/* Row 2: Description */}
                     {tg.description && (
                       <div className="text-xs text-muted-foreground truncate">{tg.description}</div>
                     )}
-                    {/* Row 3: Group + Tag */}
-                    <div className="text-xs text-muted-foreground/70 truncate">
-                      {tg.group}{tg.group && tg.tag && ' · '}{tg.tag}
-                    </div>
-                    {/* Row 4: Stats */}
-                    <div className="flex gap-2 text-xs text-muted-foreground mt-0.5">
+                    {/* Row 3: Group */}
+                    {tg.group && (
+                      <div className="text-xs text-muted-foreground/70 truncate">{tg.group}</div>
+                    )}
+                    {/* Row 4: Stats + Live/Recent badges */}
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
                       <span><span className="text-foreground">{tg.calls_1h ?? 0}</span>/1h</span>
                       <span><span className="text-foreground">{tg.calls_24h ?? 0}</span>/24h</span>
                       <span><span className="text-foreground">{tg.unit_count ?? 0}</span>u</span>
                       <span className="text-muted-foreground/60">{formatRelativeTime(tg.last_seen)}</span>
+                      {hasActiveCall && (
+                        <span className="shrink-0 px-1 py-0.5 text-[10px] font-bold bg-live text-white rounded ml-auto">
+                          LIVE
+                        </span>
+                      )}
+                      {isRecentlyActive && (
+                        <span className="shrink-0 px-1 py-0.5 text-[10px] font-medium bg-amber-500 text-white rounded ml-auto">
+                          RECENT
+                        </span>
+                      )}
                     </div>
                   </Link>
                 </div>
@@ -265,6 +469,17 @@ export default function Talkgroups() {
         onPageSizeChange={changePageSize}
         pageSizeOptions={[30, 60, 90]}
       />
+
+      {/* Color Key */}
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-blue-500" />Law</span>
+        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-red-500" />Fire</span>
+        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-green-500" />EMS</span>
+        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-purple-500" />Dispatch</span>
+        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-amber-500" />Public Works</span>
+        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-cyan-500" />Schools</span>
+        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-slate-500" />Corrections</span>
+      </div>
     </div>
   )
 }
