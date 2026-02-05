@@ -208,7 +208,7 @@ export default function CallDetail() {
       duration: call.duration,
       start_time: call.start_time,
       stop_time: call.stop_time || '',
-      call_num: call.call_num,
+      call_num: call.call_num ?? 0,
       freq: call.freq,
       encrypted: call.encrypted,
       emergency: call.emergency,

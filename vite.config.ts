@@ -15,15 +15,16 @@ export default defineConfig({
     allowedHosts: ['eddie', 'localhost'],
     proxy: {
       '/api/ws': {
-        target: 'ws://localhost:8080',
+        target: 'wss://tr-api.luxprimatech.com',
         ws: true,
+        changeOrigin: true,
       },
       '/api': {
-        target: 'http://localhost:8080',
+        target: 'https://tr-api.luxprimatech.com',
         changeOrigin: true,
       },
       '/health': {
-        target: 'http://localhost:8080',
+        target: 'https://tr-api.luxprimatech.com',
         changeOrigin: true,
       },
     },

@@ -499,7 +499,7 @@ export default function Talkgroups() {
                       <span><span className="text-foreground">{tg.calls_1h ?? 0}</span>/1h</span>
                       <span><span className="text-foreground">{tg.calls_24h ?? 0}</span>/24h</span>
                       <span><span className="text-foreground">{tg.unit_count ?? 0}</span>u</span>
-                      <span className="text-muted-foreground/60">{formatRelativeTime(tg.last_seen)}</span>
+                      <span className="text-muted-foreground/60">{formatRelativeTime(tg.last_seen || '')}</span>
                       {hasActiveCall && (
                         <span className="shrink-0 px-1 py-0.5 text-[10px] font-bold bg-live text-white rounded ml-auto">
                           LIVE

@@ -240,7 +240,7 @@ export default function Units() {
                     )}
 
                     <p className="mt-2 text-xs text-muted-foreground">
-                      Last seen: {formatRelativeTime(unit.last_seen)}
+                      Last seen: {formatRelativeTime(unit.last_seen || '')}
                     </p>
 
                     {unit.alpha_tag_source && (

@@ -108,13 +108,13 @@ export default function UnitDetail() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div>
               <p className="text-sm text-muted-foreground">First Seen</p>
-              <p>{formatDateTime(unit.first_seen)}</p>
+              <p>{formatDateTime(unit.first_seen || '')}</p>
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Last Seen</p>
-              <p>{formatDateTime(unit.last_seen)}</p>
+              <p>{formatDateTime(unit.last_seen || '')}</p>
               <p className="text-xs text-muted-foreground">
-                {formatRelativeTime(unit.last_seen)}
+                {formatRelativeTime(unit.last_seen || '')}
               </p>
             </div>
             <div>

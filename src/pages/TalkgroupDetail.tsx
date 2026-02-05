@@ -109,6 +109,7 @@ export default function TalkgroupDetail() {
 
         // Convert RecentCallInfo to Call format
         const converted: Call[] = toAdd.map((rc) => ({
+          call_id: rc.call_id ?? `${rc.sysid ?? ''}:${rc.tgid}:${Math.floor(new Date(rc.start_time).getTime() / 1000)}`,
           id: rc.id ?? 0,
           call_group_id: rc.call_group_id,
           instance_id: 0,
@@ -242,7 +243,7 @@ export default function TalkgroupDetail() {
         duration: call.duration,
         start_time: call.start_time,
         stop_time: call.stop_time || '',
-        call_num: call.call_num,
+        call_num: call.call_num ?? 0,
         freq: call.freq,
         encrypted: call.encrypted,
         emergency: call.emergency,
@@ -409,13 +410,13 @@ export default function TalkgroupDetail() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 text-sm">
             <div>
               <p className="text-muted-foreground">First Seen</p>
-              <p>{formatDateTime(talkgroup.first_seen)}</p>
+              <p>{formatDateTime(talkgroup.first_seen || '')}</p>
             </div>
             <div>
               <p className="text-muted-foreground">Last Seen</p>
-              <p>{formatDateTime(talkgroup.last_seen)}</p>
+              <p>{formatDateTime(talkgroup.last_seen || '')}</p>
               <p className="text-xs text-muted-foreground">
-                {formatRelativeTime(talkgroup.last_seen)}
+                {formatRelativeTime(talkgroup.last_seen || '')}
               </p>
             </div>
             <div>
