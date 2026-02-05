@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Outlet } from 'react-router-dom'
+import { Outlet, useNavigate } from 'react-router-dom'
 import { useHotkeys } from 'react-hotkeys-hook'
 import { Header } from './Header'
 import { Sidebar } from './Sidebar'
 import { AudioPlayer } from '@/components/audio/AudioPlayer'
 import { CommandPalette } from '@/components/command/CommandPalette'
+import { GoToMenu } from '@/components/command/GoToMenu'
 import { initializeRealtimeConnection } from '@/stores/useRealtimeStore'
 import { useTalkgroupCache } from '@/stores/useTalkgroupCache'
 import { getTalkgroups } from '@/api/client'
@@ -13,7 +14,9 @@ import { KEYBOARD_SHORTCUTS } from '@/lib/constants'
 export function MainLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [commandOpen, setCommandOpen] = useState(false)
+  const [goToMenuOpen, setGoToMenuOpen] = useState(false)
   const addTalkgroupsToCache = useTalkgroupCache((s) => s.addTalkgroups)
+  const navigate = useNavigate()
 
   // Initialize WebSocket connection
   useEffect(() => {
@@ -52,6 +55,49 @@ export function MainLayout() {
     toggleSidebar()
   })
 
+  // Show "Go to" menu when 'g' is pressed
+  useHotkeys('g', (e) => {
+    e.preventDefault()
+    setGoToMenuOpen(true)
+  }, { enabled: !commandOpen && !goToMenuOpen })
+
+  // Navigation shortcuts (vim-style g+key sequences)
+  useHotkeys(KEYBOARD_SHORTCUTS.GO_TO_DASHBOARD, (e) => {
+    e.preventDefault()
+    setGoToMenuOpen(false)
+    navigate('/')
+  })
+
+  useHotkeys(KEYBOARD_SHORTCUTS.GO_TO_CALLS, (e) => {
+    e.preventDefault()
+    setGoToMenuOpen(false)
+    navigate('/calls')
+  })
+
+  useHotkeys(KEYBOARD_SHORTCUTS.GO_TO_TALKGROUPS, (e) => {
+    e.preventDefault()
+    setGoToMenuOpen(false)
+    navigate('/talkgroups')
+  })
+
+  useHotkeys(KEYBOARD_SHORTCUTS.GO_TO_UNITS, (e) => {
+    e.preventDefault()
+    setGoToMenuOpen(false)
+    navigate('/units')
+  })
+
+  useHotkeys(KEYBOARD_SHORTCUTS.GO_TO_SETTINGS, (e) => {
+    e.preventDefault()
+    setGoToMenuOpen(false)
+    navigate('/settings')
+  })
+
+  // Escape to close menus
+  useHotkeys(KEYBOARD_SHORTCUTS.ESCAPE, () => {
+    setCommandOpen(false)
+    setGoToMenuOpen(false)
+  }, { enabled: commandOpen || goToMenuOpen })
+
   return (
     <div className="flex h-screen flex-col bg-background">
       <Header onToggleSidebar={toggleSidebar} onOpenCommand={openCommand} />
@@ -68,6 +114,10 @@ export function MainLayout() {
       </div>
 
       <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} />
+      <GoToMenu open={goToMenuOpen} onOpenChange={setGoToMenuOpen} onNavigate={(path) => {
+        setGoToMenuOpen(false)
+        navigate(path)
+      }} />
     </div>
   )
 }

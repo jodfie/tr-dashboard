@@ -486,11 +486,14 @@ export default function Settings() {
         </CardHeader>
         <CardContent>
           <div className="grid gap-3 sm:grid-cols-2">
-            <ShortcutItem label="Command Palette" keys={['⌘', 'K']} />
+            <ShortcutItem label="Command Palette" keys={['Ctrl', 'K']} />
             <ShortcutItem label="Toggle Sidebar" keys={['[']} />
             <ShortcutItem label="Play/Pause" keys={['Space']} />
             <ShortcutItem label="Skip Next" keys={['J']} />
             <ShortcutItem label="Skip Previous" keys={['K']} />
+            <ShortcutItem label="Seek Forward" keys={['L']} />
+            <ShortcutItem label="Seek Backward" keys={['H']} />
+            <ShortcutItem label="Replay" keys={['R']} />
             <ShortcutItem label="Mute/Unmute" keys={['M']} />
             <ShortcutItem label="Volume Up" keys={['↑']} />
             <ShortcutItem label="Volume Down" keys={['↓']} />

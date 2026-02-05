@@ -266,6 +266,50 @@ export function AudioPlayer() {
     { enabled: !!currentCall }
   )
 
+  useHotkeys(
+    KEYBOARD_SHORTCUTS.SEEK_FORWARD,
+    (e) => {
+      e.preventDefault()
+      const audio = audioRef.current
+      if (audio) {
+        const newTime = Math.min(audio.duration || 0, audio.currentTime + AUDIO.SEEK_STEP)
+        audio.currentTime = newTime
+        requestSeek(newTime)
+      }
+    },
+    { enabled: !!currentCall && !isBlocked }
+  )
+
+  useHotkeys(
+    KEYBOARD_SHORTCUTS.SEEK_BACKWARD,
+    (e) => {
+      e.preventDefault()
+      const audio = audioRef.current
+      if (audio) {
+        const newTime = Math.max(0, audio.currentTime - AUDIO.SEEK_STEP)
+        audio.currentTime = newTime
+        requestSeek(newTime)
+      }
+    },
+    { enabled: !!currentCall && !isBlocked }
+  )
+
+  useHotkeys(
+    KEYBOARD_SHORTCUTS.REPLAY,
+    (e) => {
+      e.preventDefault()
+      const audio = audioRef.current
+      if (audio) {
+        audio.currentTime = 0
+        requestSeek(0)
+        if (!isPlaying) {
+          audio.play().catch(console.error)
+        }
+      }
+    },
+    { enabled: !!currentCall && !isBlocked }
+  )
+
   // Idle state - no call loaded
   if (!currentCall) {
     return (
