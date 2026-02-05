@@ -2,14 +2,13 @@ import { useEffect, useState, useCallback } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
 import { Pagination } from '@/components/ui/pagination'
 import { getTalkgroups, getSystems } from '@/api/client'
 import type { Talkgroup, System } from '@/api/types'
 import { useFilterStore } from '@/stores/useFilterStore'
 import { useMonitorStore } from '@/stores/useMonitorStore'
 import { useTalkgroupCache, talkgroupKey } from '@/stores/useTalkgroupCache'
-import { getTalkgroupDisplayName, formatRelativeTime } from '@/lib/utils'
+import { formatRelativeTime } from '@/lib/utils'
 
 const DEFAULT_PAGE_SIZE = 30
 
@@ -181,95 +180,76 @@ export default function Talkgroups() {
             No talkgroups found
           </div>
         ) : (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {talkgroups.map((tg) => {
               const tgKey = talkgroupKey(tg.sysid, tg.tgid)
               const monitored = isMonitored(tg.sysid, tg.tgid)
               const favorite = isFavorite(tg.sysid, tg.tgid)
 
               return (
-                <Card key={tgKey} className="hover:bg-accent/50 transition-colors">
-                  <CardContent className="p-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <Link to={`/talkgroups/${tg.sysid}:${tg.tgid}`} className="flex-1 min-w-0">
-                        <h3 className="font-semibold hover:underline truncate">
-                          {getTalkgroupDisplayName(tg.tgid, tg.alpha_tag)}
-                        </h3>
-                        <p className="text-xs text-muted-foreground truncate">
-                          {tg.group || 'Uncategorized'}
-                        </p>
-                      </Link>
+                <div
+                  key={tgKey}
+                  className="flex gap-2 rounded-md border bg-card p-2 hover:bg-accent/50 transition-colors"
+                >
+                  {/* Action buttons - vertical on left */}
+                  <div className="flex flex-col gap-0.5 shrink-0">
+                    <button
+                      onClick={() => toggleTalkgroupMonitor(tg.sysid, tg.tgid)}
+                      className={`p-0.5 rounded ${
+                        monitored
+                          ? 'text-live bg-live/10'
+                          : 'text-muted-foreground hover:text-live'
+                      }`}
+                      title={monitored ? 'Stop monitoring' : 'Monitor'}
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill={monitored ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2">
+                        <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                        <line x1="12" x2="12" y1="19" y2="22" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => toggleFavoriteTalkgroup(tg.sysid, tg.tgid)}
+                      className={`p-0.5 rounded ${
+                        favorite
+                          ? 'text-primary bg-primary/10'
+                          : 'text-muted-foreground hover:text-primary'
+                      }`}
+                      title={favorite ? 'Unfavorite' : 'Favorite'}
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill={favorite ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2">
+                        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                      </svg>
+                    </button>
+                  </div>
 
-                      <div className="flex items-center gap-0.5 shrink-0">
-                        <button
-                          onClick={() => toggleTalkgroupMonitor(tg.sysid, tg.tgid)}
-                          className={`p-1 ${
-                            monitored
-                              ? 'text-live'
-                              : 'text-muted-foreground hover:text-live'
-                          }`}
-                          title={monitored ? 'Stop monitoring' : 'Monitor'}
-                        >
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            width="16"
-                            height="16"
-                            viewBox="0 0 24 24"
-                            fill={monitored ? 'currentColor' : 'none'}
-                            stroke="currentColor"
-                            strokeWidth="2"
-                          >
-                            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
-                            <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                            <line x1="12" x2="12" y1="19" y2="22" />
-                          </svg>
-                        </button>
-                        <button
-                          onClick={() => toggleFavoriteTalkgroup(tg.sysid, tg.tgid)}
-                          className={`p-1 ${
-                            favorite
-                              ? 'text-primary'
-                              : 'text-muted-foreground hover:text-primary'
-                          }`}
-                          title={favorite ? 'Unfavorite' : 'Favorite'}
-                        >
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            width="16"
-                            height="16"
-                            viewBox="0 0 24 24"
-                            fill={favorite ? 'currentColor' : 'none'}
-                            stroke="currentColor"
-                            strokeWidth="2"
-                          >
-                            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                          </svg>
-                        </button>
-                      </div>
+                  {/* Content */}
+                  <Link to={`/talkgroups/${tg.sysid}:${tg.tgid}`} className="flex-1 min-w-0">
+                    {/* Row 1: Name + TGID + mode */}
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-medium text-sm truncate hover:underline">
+                        {tg.alpha_tag || `TG ${tg.tgid}`}
+                      </span>
+                      <span className="text-xs font-mono text-muted-foreground shrink-0">{tg.tgid}</span>
+                      {tg.mode && <span className="text-xs text-muted-foreground shrink-0">{tg.mode}</span>}
                     </div>
-
-                    <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
-                      <Badge variant="outline" className="font-mono text-xs px-1.5 py-0">
-                        {tg.tgid}
-                      </Badge>
-                      {tg.tag && <Badge variant="secondary" className="text-xs px-1.5 py-0">{tg.tag}</Badge>}
-                      {tg.mode === 'D' && (
-                        <Badge variant="outline" className="text-xs px-1.5 py-0">D</Badge>
-                      )}
-                      {tg.mode === 'A' && (
-                        <Badge variant="outline" className="text-xs px-1.5 py-0">A</Badge>
-                      )}
+                    {/* Row 2: Description */}
+                    {tg.description && (
+                      <div className="text-xs text-muted-foreground truncate">{tg.description}</div>
+                    )}
+                    {/* Row 3: Group + Tag */}
+                    <div className="text-xs text-muted-foreground/70 truncate">
+                      {tg.group}{tg.group && tg.tag && ' · '}{tg.tag}
                     </div>
-
-                    {/* Stats - single row */}
-                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                    {/* Row 4: Stats */}
+                    <div className="flex gap-2 text-xs text-muted-foreground mt-0.5">
                       <span><span className="text-foreground">{tg.calls_1h ?? 0}</span>/1h</span>
-                      <span><span className="text-foreground">{tg.calls_24h?.toLocaleString() ?? 0}</span>/24h</span>
-                      <span><span className="text-foreground">{tg.unit_count ?? 0}</span> units</span>
-                      <span className="text-muted-foreground/70">{formatRelativeTime(tg.last_seen)}</span>
+                      <span><span className="text-foreground">{tg.calls_24h ?? 0}</span>/24h</span>
+                      <span><span className="text-foreground">{tg.unit_count ?? 0}</span>u</span>
+                      <span className="text-muted-foreground/60">{formatRelativeTime(tg.last_seen)}</span>
                     </div>
-                  </CardContent>
-                </Card>
+                  </Link>
+                </div>
               )
             })}
           </div>
