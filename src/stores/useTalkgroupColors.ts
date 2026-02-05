@@ -26,6 +26,52 @@ export interface TalkgroupFields {
   tgid?: number
 }
 
+/**
+ * Match a keyword pattern against text with wildcard support.
+ *
+ * Patterns:
+ *   "osp"    → whole word match (word boundaries)
+ *   "*osp*"  → substring match anywhere
+ *   "osp*"   → word starting with "osp"
+ *   "*osp"   → word ending with "osp"
+ */
+function matchKeyword(keyword: string, text: string): boolean {
+  const kw = keyword.toLowerCase().trim()
+  const str = text.toLowerCase()
+
+  if (!kw || kw === '*' || kw === '**') return false
+
+  const startsWithWildcard = kw.startsWith('*')
+  const endsWithWildcard = kw.endsWith('*')
+
+  // Remove wildcards to get the core pattern
+  let pattern = kw
+  if (startsWithWildcard) pattern = pattern.slice(1)
+  if (endsWithWildcard) pattern = pattern.slice(0, -1)
+
+  if (!pattern) return false
+
+  // Escape regex special characters in the pattern
+  const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+  let regex: RegExp
+  if (startsWithWildcard && endsWithWildcard) {
+    // *osp* → substring match anywhere
+    regex = new RegExp(escaped, 'i')
+  } else if (startsWithWildcard) {
+    // *osp → word ending with pattern
+    regex = new RegExp(escaped + '\\b', 'i')
+  } else if (endsWithWildcard) {
+    // osp* → word starting with pattern
+    regex = new RegExp('\\b' + escaped, 'i')
+  } else {
+    // osp → whole word match
+    regex = new RegExp('\\b' + escaped + '\\b', 'i')
+  }
+
+  return regex.test(str)
+}
+
 export interface TalkgroupColorsState {
   rules: ColorRule[]
   overrides: Record<string, TalkgroupOverride> // key is "sysid:tgid"
@@ -115,23 +161,20 @@ export const useTalkgroupColors = create<TalkgroupColorsState>()(
 
       // Utility functions
       getRuleForTalkgroup: (fields) => {
-        // Build array of lowercase strings to match against
+        // Build array of strings to match against
         const searchStrings = [
           fields.alpha_tag,
           fields.description,
           fields.group,
           fields.tag,
-        ]
-          .filter(Boolean)
-          .map((s) => (s as string).toLowerCase())
+        ].filter(Boolean) as string[]
 
         const { rules } = get()
 
         for (const rule of rules) {
           for (const keyword of rule.keywords) {
-            const kw = keyword.toLowerCase()
             for (const str of searchStrings) {
-              if (str.includes(kw)) {
+              if (matchKeyword(keyword, str)) {
                 return rule
               }
             }
