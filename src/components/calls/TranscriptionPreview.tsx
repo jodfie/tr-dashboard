@@ -3,9 +3,17 @@ import { useTranscriptionCache } from '@/stores/useTranscriptionCache'
 import { getUnitColorByRid } from '@/lib/utils'
 import type { Transmission, TranscriptionWord } from '@/api/types'
 
+interface UnitInfo {
+  unit_id: number
+  unit_tag: string
+}
+
 interface TranscriptionPreviewProps {
   callId: number | string
   compact?: boolean
+  full?: boolean // Show full text without truncation
+  units?: UnitInfo[] // Unit info for displaying colored unit tags
+  showUnits?: boolean // Whether to show unit legend
 }
 
 // Note: This component does NOT auto-fetch transcriptions.
@@ -81,7 +89,7 @@ function buildColoredWords(
   }))
 }
 
-export function TranscriptionPreview({ callId, compact = false }: TranscriptionPreviewProps) {
+export function TranscriptionPreview({ callId, compact = false, full = false, units, showUnits = false }: TranscriptionPreviewProps) {
   const entry = useTranscriptionCache((s) => s.getEntry(callId))
 
   // Get unique unit RIDs in order of appearance
@@ -112,16 +120,45 @@ export function TranscriptionPreview({ callId, compact = false }: TranscriptionP
     return buildColoredWords(entry.words, entry.transmissions)
   }, [entry?.words, entry?.transmissions, uniqueUnits])
 
+  // Build unit legend - map unit_id to colors based on transmission order
+  const unitLegend = useMemo(() => {
+    if (!showUnits || !units || units.length === 0 || uniqueUnits.length === 0) {
+      return null
+    }
+    // Only show units that appear in transmissions
+    return units
+      .filter(u => uniqueUnits.includes(u.unit_id))
+      .map(u => ({
+        ...u,
+        color: getUnitColorByRid(u.unit_id, uniqueUnits),
+      }))
+  }, [showUnits, units, uniqueUnits])
+
   // Show nothing while loading or if no transcription
   if (!entry || entry.status !== 'loaded' || !entry.text) {
+    // Still show units if requested and available
+    if (unitLegend && unitLegend.length > 0) {
+      return (
+        <div className="flex flex-wrap gap-1.5">
+          {unitLegend.map((u) => (
+            <span key={u.unit_id} className={`text-xs ${u.color?.text || ''}`}>
+              {u.unit_tag || `Unit ${u.unit_id}`}
+            </span>
+          ))}
+        </div>
+      )
+    }
     return null
   }
 
-  const maxLength = compact ? 80 : 150
+  const maxLength = full ? Infinity : compact ? 80 : 150
+
+  // Build transcription element
+  let transcriptionEl: React.ReactNode
 
   // If we have colored words, render them
   if (coloredWords && coloredWords.length > 0) {
-    // Truncate to approximate character limit
+    // Truncate to approximate character limit (unless full)
     let charCount = 0
     const truncatedWords: ColoredWord[] = []
     let truncated = false
@@ -135,7 +172,7 @@ export function TranscriptionPreview({ callId, compact = false }: TranscriptionP
       charCount += cw.word.length + 1 // +1 for space
     }
 
-    return (
+    transcriptionEl = (
       <p className="text-sm text-muted-foreground italic">
         {truncatedWords.map((cw, i) => {
           const color = cw.unitRid !== null
@@ -153,16 +190,35 @@ export function TranscriptionPreview({ callId, compact = false }: TranscriptionP
         {truncated && '...'}
       </p>
     )
+  } else {
+    // Fallback to plain text display
+    const text = !full && entry.text.length > maxLength
+      ? entry.text.slice(0, maxLength).trim() + '...'
+      : entry.text
+
+    transcriptionEl = (
+      <p className={`text-sm text-muted-foreground italic ${full ? '' : 'truncate'}`}>
+        {text}
+      </p>
+    )
   }
 
-  // Fallback to plain text display
-  const text = entry.text.length > maxLength
-    ? entry.text.slice(0, maxLength).trim() + '...'
-    : entry.text
+  // If no unit legend, just return transcription
+  if (!unitLegend || unitLegend.length === 0) {
+    return transcriptionEl
+  }
 
+  // Return both transcription and unit legend
   return (
-    <p className="text-sm text-muted-foreground italic truncate">
-      {text}
-    </p>
+    <div className="space-y-1">
+      {transcriptionEl}
+      <div className="flex flex-wrap gap-1.5">
+        {unitLegend.map((u) => (
+          <span key={u.unit_id} className={`text-xs ${u.color?.text || ''}`}>
+            {u.unit_tag || `Unit ${u.unit_id}`}
+          </span>
+        ))}
+      </div>
+    </div>
   )
 }

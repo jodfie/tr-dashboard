@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button'
 import { useRealtimeStore } from '@/stores/useRealtimeStore'
 import { useAudioStore, selectIsPlaying } from '@/stores/useAudioStore'
 import { useTranscriptionCache } from '@/stores/useTranscriptionCache'
+import { useMonitorStore } from '@/stores/useMonitorStore'
+import { useFilterStore } from '@/stores/useFilterStore'
 import { TranscriptionPreview } from '@/components/calls/TranscriptionPreview'
 import { getStats, getRecentCalls, getRecorders } from '@/api/client'
 import { useTalkgroupColors } from '@/stores/useTalkgroupColors'
@@ -86,12 +88,25 @@ export default function Dashboard() {
   const [apiRecorders, setApiRecorders] = useState<RecorderInfo[]>([])
   const [loading, setLoading] = useState(true)
 
+  // Filter state for recent calls
+  const [filterFavorites, setFilterFavorites] = useState(false)
+  const [filterMonitored, setFilterMonitored] = useState(false)
+  const [filterTranscribed, setFilterTranscribed] = useState(false)
+  const [filterEmergency, setFilterEmergency] = useState(false)
+  const [filterLong, setFilterLong] = useState(false)
+
+  const TARGET_CALLS = 24
+  const FILTERED_POOL = 500 // Fetch more when filtering to find enough matches
+
   const fetchTranscription = useTranscriptionCache((s) => s.fetchTranscription)
+  const getEntry = useTranscriptionCache((s) => s.getEntry)
   const loadCall = useAudioStore((s) => s.loadCall)
   const currentCall = useAudioStore((s) => s.currentCall)
   const isPlaying = useAudioStore(selectIsPlaying)
   const getCachedColor = useTalkgroupColors((s) => s.getCachedColor)
   const talkgroupCache = useTalkgroupCache((s) => s.cache)
+  const isFavorite = useFilterStore((s) => s.isFavorite)
+  const isMonitored = useMonitorStore((s) => s.isMonitored)
 
   const fetchTranscriptionsForCalls = useCallback((calls: RecentCallInfo[]) => {
     for (const call of calls) {
@@ -102,9 +117,12 @@ export default function Dashboard() {
     }
   }, [fetchTranscription])
 
+  // Check if any filter is active
+  const hasActiveFilter = filterFavorites || filterMonitored || filterTranscribed || filterEmergency || filterLong
+
   // Fetch initial data
   useEffect(() => {
-    Promise.all([getStats(), getRecentCalls(24), getRecorders()])
+    Promise.all([getStats(), getRecentCalls(TARGET_CALLS), getRecorders()])
       .then(([statsRes, recentRes, recordersRes]) => {
         setStats(statsRes)
         setRecentCalls(recentRes.calls)
@@ -113,7 +131,21 @@ export default function Dashboard() {
       })
       .catch(console.error)
       .finally(() => setLoading(false))
-  }, [fetchTranscriptionsForCalls])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Fetch larger pool when filters become active
+  useEffect(() => {
+    if (loading || !hasActiveFilter) return
+
+    getRecentCalls(FILTERED_POOL)
+      .then((res) => {
+        setRecentCalls(res.calls)
+        fetchTranscriptionsForCalls(res.calls)
+      })
+      .catch(console.error)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasActiveFilter, loading])
 
   // Refresh stats periodically
   useEffect(() => {
@@ -123,13 +155,22 @@ export default function Dashboard() {
     return () => clearInterval(interval)
   }, [])
 
-  // Refresh recent calls periodically
+  // Refresh recent calls periodically - just fetch new ones and merge
   useEffect(() => {
     const interval = setInterval(() => {
-      getRecentCalls(24).then((res) => {
-        setRecentCalls(res.calls)
-        fetchTranscriptionsForCalls(res.calls)
-      }).catch(console.error)
+      getRecentCalls(TARGET_CALLS)
+        .then((res) => {
+          const newCalls = res.calls
+          setRecentCalls((prev) => {
+            // Merge: new calls first, then existing calls not in new batch
+            const newIds = new Set(newCalls.map(c => c.call_id ?? c.id))
+            const kept = prev.filter(c => !newIds.has(c.call_id ?? c.id))
+            const merged = [...newCalls, ...kept].slice(0, FILTERED_POOL)
+            return merged
+          })
+          fetchTranscriptionsForCalls(newCalls)
+        })
+        .catch(console.error)
     }, REFRESH_INTERVALS.RECENT_CALLS)
     return () => clearInterval(interval)
   }, [fetchTranscriptionsForCalls])
@@ -237,6 +278,27 @@ export default function Dashboard() {
   const recordingCount = mergedRecorders.filter((r) => r.state === 1).length
   const usedCount = mergedRecorders.length  // recorders with count > 0
   const totalCount = apiRecorders.length    // all recorders
+
+  // Filter recent calls based on active filters, limit to target count
+  const filteredCalls = useMemo(() => {
+    if (!hasActiveFilter) return recentCalls.slice(0, TARGET_CALLS)
+
+    return recentCalls.filter((call) => {
+      const sysid = call.sysid || '348'
+      const callId = call.call_id ?? (call.id != null ? String(call.id) : '')
+
+      if (filterFavorites && !isFavorite(sysid, call.tgid)) return false
+      if (filterMonitored && !isMonitored(sysid, call.tgid)) return false
+      if (filterTranscribed) {
+        const entry = getEntry(callId)
+        if (!entry || entry.status !== 'loaded' || !entry.text) return false
+      }
+      if (filterEmergency && !call.emergency) return false
+      if (filterLong && call.duration < 30) return false
+
+      return true
+    }).slice(0, TARGET_CALLS)
+  }, [recentCalls, hasActiveFilter, filterFavorites, filterMonitored, filterTranscribed, filterEmergency, filterLong, isFavorite, isMonitored, getEntry])
 
   const handlePlayCall = (call: RecentCallInfo) => {
     const callIdStr = call.call_id ?? (call.id != null ? String(call.id) : '')
@@ -442,8 +504,71 @@ export default function Dashboard() {
 
       {/* Recent calls - dense grid */}
       <div>
-        <div className="mb-2 flex items-center justify-between">
+        <div className="mb-2 flex flex-wrap items-center gap-2">
           <h2 className="text-sm font-medium text-muted-foreground">RECENT CALLS</h2>
+          <div className="flex flex-wrap items-center gap-1">
+            <button
+              onClick={() => setFilterFavorites(!filterFavorites)}
+              className={cn(
+                "px-2 py-0.5 text-xs rounded-full border transition-colors",
+                filterFavorites
+                  ? "bg-amber-500 text-white border-amber-500"
+                  : "bg-transparent text-muted-foreground border-border hover:border-amber-500/50"
+              )}
+            >
+              Favorites
+            </button>
+            <button
+              onClick={() => setFilterMonitored(!filterMonitored)}
+              className={cn(
+                "px-2 py-0.5 text-xs rounded-full border transition-colors",
+                filterMonitored
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-transparent text-muted-foreground border-border hover:border-primary/50"
+              )}
+            >
+              Monitored
+            </button>
+            <button
+              onClick={() => setFilterTranscribed(!filterTranscribed)}
+              className={cn(
+                "px-2 py-0.5 text-xs rounded-full border transition-colors",
+                filterTranscribed
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-transparent text-muted-foreground border-border hover:border-primary/50"
+              )}
+            >
+              Transcribed
+            </button>
+            <button
+              onClick={() => setFilterEmergency(!filterEmergency)}
+              className={cn(
+                "px-2 py-0.5 text-xs rounded-full border transition-colors",
+                filterEmergency
+                  ? "bg-destructive text-destructive-foreground border-destructive"
+                  : "bg-transparent text-muted-foreground border-border hover:border-destructive/50"
+              )}
+            >
+              Emergency
+            </button>
+            <button
+              onClick={() => setFilterLong(!filterLong)}
+              className={cn(
+                "px-2 py-0.5 text-xs rounded-full border transition-colors",
+                filterLong
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-transparent text-muted-foreground border-border hover:border-primary/50"
+              )}
+            >
+              Long (&gt;30s)
+            </button>
+          </div>
+          <span className="text-xs text-muted-foreground ml-auto">
+            {hasActiveFilter
+              ? `${filteredCalls.length} of ${recentCalls.length}`
+              : `${recentCalls.length} calls`
+            }
+          </span>
           <Link to="/calls" className="text-xs text-primary hover:underline">
             View all →
           </Link>
@@ -453,12 +578,30 @@ export default function Dashboard() {
           <div className="flex h-32 items-center justify-center text-muted-foreground">
             Loading...
           </div>
+        ) : filteredCalls.length === 0 ? (
+          <div className="flex h-32 items-center justify-center text-muted-foreground">
+            No calls match filters
+          </div>
         ) : (
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {recentCalls.map((call) => {
+            {filteredCalls.map((call) => {
               const callId = call.call_id ?? (call.id != null ? String(call.id) : '')
               const isCurrentlyPlaying = currentCall?.callId === callId
               const hasAudio = call.has_audio || !!call.audio_path
+
+              // Get cached talkgroup info for color matching
+              const sysid = call.sysid || '348'
+              const cachedTg = call.tgid ? talkgroupCache.get(talkgroupKey(sysid, call.tgid)) : undefined
+              const tgColor = call.tgid
+                ? getCachedColor(sysid, call.tgid, {
+                    alpha_tag: cachedTg?.alphaTag ?? call.tg_alpha_tag,
+                    description: cachedTg?.description,
+                    group: cachedTg?.group,
+                    tag: cachedTg?.tag,
+                    tgid: call.tgid,
+                    sysid,
+                  })
+                : null
 
               return (
                 <Card
@@ -489,10 +632,11 @@ export default function Dashboard() {
                         )}
                       </Button>
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1.5">
                           <Link
                             to={`/calls/${callId}`}
-                            className="truncate font-medium text-sm hover:underline"
+                            className={cn("truncate font-medium text-sm hover:underline", !tgColor && "text-sky-400")}
+                            style={tgColor ? { color: tgColor } : undefined}
                           >
                             {getTalkgroupDisplayName(call.tgid, call.tg_alpha_tag)}
                           </Link>
@@ -502,22 +646,11 @@ export default function Dashboard() {
                           {call.encrypted && (
                             <Badge variant="secondary" className="text-[10px] px-1 py-0">ENC</Badge>
                           )}
+                          <span className="text-xs text-muted-foreground">
+                            {formatDuration(call.duration)} • {formatRelativeTime(call.start_time)}
+                          </span>
                         </div>
-                        <TranscriptionPreview callId={callId} compact />
-                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-0.5">
-                          <span className="font-mono tabular-nums">{formatDuration(call.duration)}</span>
-                          <span>•</span>
-                          <span>{formatRelativeTime(call.start_time)}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                          <span>{call.system}</span>
-                          {call.units && call.units.length > 0 && (
-                            <>
-                              <span>•</span>
-                              <span>{call.units.length}u</span>
-                            </>
-                          )}
-                        </div>
+                        <TranscriptionPreview callId={callId} full units={call.units} showUnits />
                       </div>
                     </div>
                   </CardContent>
