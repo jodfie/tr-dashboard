@@ -97,11 +97,7 @@ export default function TalkgroupDetail() {
         // Use call_id for deduplication
         const existingIds = new Set(
           prev.map((c) => {
-            if (c.tg_sysid && c.tgid && c.start_time) {
-              const ts = Math.floor(new Date(c.start_time).getTime() / 1000)
-              return `${c.tg_sysid}:${c.tgid}:${ts}`
-            }
-            return String(c.id)
+            return c.call_id
           })
         )
         const toAdd = newCalls.filter((nc) => !existingIds.has(nc.call_id || ''))
@@ -109,8 +105,7 @@ export default function TalkgroupDetail() {
 
         // Convert RecentCallInfo to Call format
         const converted: Call[] = toAdd.map((rc) => ({
-          call_id: rc.call_id ?? `${rc.sysid ?? ''}:${rc.tgid}:${Math.floor(new Date(rc.start_time).getTime() / 1000)}`,
-          id: rc.id ?? 0,
+          call_id: rc.call_id,
           call_group_id: rc.call_group_id,
           instance_id: 0,
           system_id: 0,
@@ -231,11 +226,7 @@ export default function TalkgroupDetail() {
       clearQueue()
 
       const toCallInfo = (call: Call) => ({
-        id: call.id,
-        call_id:
-          call.tg_sysid && call.tgid && call.start_time
-            ? `${call.tg_sysid}:${call.tgid}:${Math.floor(new Date(call.start_time).getTime() / 1000)}`
-            : String(call.id),
+        call_id: call.call_id,
         system: systemName || '',
         sysid: call.tg_sysid,
         tgid: call.tgid ?? 0,
@@ -497,10 +488,7 @@ export default function TalkgroupDetail() {
         ) : (
           <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))' }}>
             {calls.map((call) => {
-              const callId =
-                call.tg_sysid && call.tgid && call.start_time
-                  ? `${call.tg_sysid}:${call.tgid}:${Math.floor(new Date(call.start_time).getTime() / 1000)}`
-                  : String(call.id)
+              const callId = call.call_id
               const isCurrentlyPlaying = currentCall?.callId === callId
               const units = call.units?.filter((u) => u.unit_rid > 0) || []
               const uniqueUnitRids = [...new Set(units.map((u) => u.unit_rid))]

@@ -16,10 +16,8 @@ function deduplicateCalls(
 ): (RecentCallInfo | Call)[] {
   const seen = new Set<string | number>()
   return calls.filter((call) => {
-    // Use call_group_id, then call_id (string), then id (number)
-    const groupId = call.call_group_id
-      ?? ('call_id' in call && call.call_id ? call.call_id : null)
-      ?? call.id
+    // Use call_group_id, then call_id
+    const groupId = call.call_group_id ?? call.call_id
     if (groupId == null) return true  // Can't dedupe without an ID
     if (seen.has(groupId)) {
       return false
@@ -53,7 +51,7 @@ export function CallList({
     <div className="space-y-2">
       {displayCalls.map((call) => (
         <CallCard
-          key={('call_id' in call && call.call_id) || call.id}
+          key={call.call_id}
           call={call}
           showSystem={showSystem}
           compact={compact}

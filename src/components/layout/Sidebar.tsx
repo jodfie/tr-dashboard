@@ -378,9 +378,9 @@ export function Sidebar({ collapsed }: SidebarProps) {
             <p className="px-2 text-xs text-muted-foreground">No recent activity</p>
           ) : (
             <div className="space-y-1">
-              {recentTalkgroupActivity.map((call, i) => (
+              {recentTalkgroupActivity.map((call) => (
                 <div
-                  key={`${call.id}-${i}`}
+                  key={call.call_id}
                   className="rounded-md px-2 py-1.5 text-xs hover:bg-accent"
                 >
                   <div className="flex items-center justify-between">

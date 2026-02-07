@@ -12,7 +12,7 @@ export type PlaybackState =
   | 'error'     // Playback failed
 
 export interface QueuedCall {
-  id: number | string
+  id: string                   // Same as callId - deterministic composite ID
   callId: string               // Composite format: "sysid:tgid:timestamp"
   system: string
   sysid?: string
@@ -95,9 +95,9 @@ function toQueuedCall(call: RecentCallInfo | QueuedCall): QueuedCall {
     return call
   }
 
-  const callId = call.call_id ?? (call.id != null ? String(call.id) : '')
+  const callId = call.call_id ?? ''
   return {
-    id: call.id ?? callId,
+    id: callId,
     callId,
     system: call.system,
     sysid: call.sysid,

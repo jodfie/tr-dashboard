@@ -23,7 +23,6 @@ export interface CallUnit {
 export interface Call {
   // Identifiers
   call_id: string                    // Composite format: "sysid:tgid:timestamp"
-  id?: number                        // Legacy database ID (may not be present)
   tr_call_id?: string               // Trunk-recorder call ID
   call_group_id?: number
   call_num?: number
@@ -269,10 +268,9 @@ export interface TransmissionListResponse {
 
 // Recent calls extended format
 export interface RecentCallInfo {
-  id?: number | null
-  call_id?: string
+  call_id: string              // Deterministic composite ID: sysid:tgid:start_unix
+  tr_call_id?: string          // Trunk-recorder call ID
   call_group_id?: number
-  tr_call_id?: string
   call_num: number
   start_time: string
   stop_time?: string

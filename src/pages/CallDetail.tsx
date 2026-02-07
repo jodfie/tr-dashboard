@@ -150,7 +150,7 @@ export default function CallDetail() {
   const tgAlphaTag = call?.tg_alpha_tag || talkgroup?.alpha_tag
 
   // Compare using the route param id (composite format) since that's what we use for callId
-  const isCurrentlyPlaying = currentCall?.callId === id || currentCall?.callId === String(call?.id)
+  const isCurrentlyPlaying = currentCall?.callId === id
 
   // Get unique unit RIDs in order of appearance for color-coding
   const uniqueUnits = useMemo(() => {
@@ -198,9 +198,8 @@ export default function CallDetail() {
   const handlePlay = () => {
     if (!call || !call.audio_path) return
     // Use route param id as call_id (composite format) for audio URL
-    const callIdStr = id || String(call.id)
+    const callIdStr = id || call.call_id
     loadCall({
-      id: call.id,
       call_id: callIdStr,
       system: '',
       tgid: tgid,

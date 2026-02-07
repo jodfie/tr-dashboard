@@ -27,9 +27,8 @@ export function CallCard({ call, showSystem = true, compact = false }: CallCardP
   const currentCall = useAudioStore((s) => s.currentCall)
   const isPlaying = useAudioStore(selectIsPlaying)
 
-  // Prefer string call_id (composite format) for audio URLs, fallback to numeric id
-  const callIdStr = 'call_id' in call && call.call_id ? call.call_id : String(call.id)
-  const callId = callIdStr  // For comparison and audio URL
+  // Use call_id (composite format) for audio URLs and identification
+  const callId = call.call_id ?? ''
   const isCurrentlyPlaying = currentCall?.callId === callId
   const hasAudio = 'has_audio' in call ? call.has_audio : !!call.audio_path
   const system = 'system' in call ? call.system : ''
@@ -66,10 +65,9 @@ export function CallCard({ call, showSystem = true, compact = false }: CallCardP
   const handlePlay = (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    if (hasAudio) {
+    if (hasAudio && callId) {
       loadCall({
-        id: typeof call.id === 'number' ? call.id : undefined,
-        call_id: callIdStr,
+        call_id: callId,
         system,
         sysid,
         tgid,

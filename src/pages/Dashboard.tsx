@@ -110,9 +110,8 @@ export default function Dashboard() {
 
   const fetchTranscriptionsForCalls = useCallback((calls: RecentCallInfo[]) => {
     for (const call of calls) {
-      const callId = call.call_id ?? (call.id != null ? String(call.id) : '')
-      if (callId) {
-        fetchTranscription(callId)
+      if (call.call_id) {
+        fetchTranscription(call.call_id)
       }
     }
   }, [fetchTranscription])
@@ -155,6 +154,9 @@ export default function Dashboard() {
     return () => clearInterval(interval)
   }, [])
 
+  // Helper to get consistent string key for a call
+  const getCallKey = useCallback((c: RecentCallInfo) => c.call_id ?? '', [])
+
   // Refresh recent calls periodically - just fetch new ones and merge
   useEffect(() => {
     const interval = setInterval(() => {
@@ -163,8 +165,9 @@ export default function Dashboard() {
           const newCalls = res.calls
           setRecentCalls((prev) => {
             // Merge: new calls first, then existing calls not in new batch
-            const newIds = new Set(newCalls.map(c => c.call_id ?? c.id))
-            const kept = prev.filter(c => !newIds.has(c.call_id ?? c.id))
+            // Use consistent string keys to avoid type mismatch
+            const newIds = new Set(newCalls.map(getCallKey))
+            const kept = prev.filter(c => !newIds.has(getCallKey(c)))
             const merged = [...newCalls, ...kept].slice(0, FILTERED_POOL)
             return merged
           })
@@ -173,7 +176,7 @@ export default function Dashboard() {
         .catch(console.error)
     }, REFRESH_INTERVALS.RECENT_CALLS)
     return () => clearInterval(interval)
-  }, [fetchTranscriptionsForCalls])
+  }, [fetchTranscriptionsForCalls, getCallKey])
 
   // Refresh recorders periodically (to get updated counts)
   useEffect(() => {
@@ -285,12 +288,11 @@ export default function Dashboard() {
 
     return recentCalls.filter((call) => {
       const sysid = call.sysid || '348'
-      const callId = call.call_id ?? (call.id != null ? String(call.id) : '')
 
       if (filterFavorites && !isFavorite(sysid, call.tgid)) return false
       if (filterMonitored && !isMonitored(sysid, call.tgid)) return false
       if (filterTranscribed) {
-        const entry = getEntry(callId)
+        const entry = call.call_id ? getEntry(call.call_id) : null
         if (!entry || entry.status !== 'loaded' || !entry.text) return false
       }
       if (filterEmergency && !call.emergency) return false
@@ -301,13 +303,11 @@ export default function Dashboard() {
   }, [recentCalls, hasActiveFilter, filterFavorites, filterMonitored, filterTranscribed, filterEmergency, filterLong, isFavorite, isMonitored, getEntry])
 
   const handlePlayCall = (call: RecentCallInfo) => {
-    const callIdStr = call.call_id ?? (call.id != null ? String(call.id) : '')
     const hasAudio = call.has_audio || !!call.audio_path
-    if (!hasAudio) return
+    if (!hasAudio || !call.call_id) return
 
     loadCall({
-      id: call.id ?? undefined,
-      call_id: callIdStr,
+      call_id: call.call_id,
       system: call.system,
       sysid: call.sysid,
       tgid: call.tgid,
@@ -585,7 +585,7 @@ export default function Dashboard() {
         ) : (
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {filteredCalls.map((call) => {
-              const callId = call.call_id ?? (call.id != null ? String(call.id) : '')
+              const callId = call.call_id ?? ''
               const isCurrentlyPlaying = currentCall?.callId === callId
               const hasAudio = call.has_audio || !!call.audio_path
 
