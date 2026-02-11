@@ -11,6 +11,7 @@
     "api:generate": "openapi-typescript https://tr-api.luxprimatech.com/openapi.json -o src/api/generated.ts"
   },
   "dependencies": {
+    "@radix-ui/react-hover-card": "^1.1.15",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "lucide-react": "^0.563.0",

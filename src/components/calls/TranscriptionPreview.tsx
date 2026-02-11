@@ -12,6 +12,7 @@ interface TranscriptionPreviewProps {
   callId: number | string
   compact?: boolean
   full?: boolean // Show full text without truncation
+  maxLines?: number // Limit to N lines with CSS line-clamp
   units?: UnitInfo[] // Unit info for displaying colored unit tags
   showUnits?: boolean // Whether to show unit legend
 }
@@ -89,7 +90,7 @@ function buildColoredWords(
   }))
 }
 
-export function TranscriptionPreview({ callId, compact = false, full = false, units, showUnits = false }: TranscriptionPreviewProps) {
+export function TranscriptionPreview({ callId, compact = false, full = false, maxLines, units, showUnits = false }: TranscriptionPreviewProps) {
   const entry = useTranscriptionCache((s) => s.getEntry(callId))
 
   // Get unique unit RIDs in order of appearance
@@ -151,14 +152,24 @@ export function TranscriptionPreview({ callId, compact = false, full = false, un
     return null
   }
 
-  const maxLength = full ? Infinity : compact ? 80 : 150
+  // Use line-clamp if maxLines specified, otherwise use character limits
+  const useLineClamp = maxLines !== undefined
+  const maxLength = full || useLineClamp ? Infinity : compact ? 80 : 150
+
+  // Line clamp styles
+  const lineClampStyle = useLineClamp ? {
+    display: '-webkit-box',
+    WebkitLineClamp: maxLines,
+    WebkitBoxOrient: 'vertical' as const,
+    overflow: 'hidden',
+  } : undefined
 
   // Build transcription element
   let transcriptionEl: React.ReactNode
 
   // If we have colored words, render them
   if (coloredWords && coloredWords.length > 0) {
-    // Truncate to approximate character limit (unless full)
+    // Truncate to approximate character limit (unless full or using line-clamp)
     let charCount = 0
     const truncatedWords: ColoredWord[] = []
     let truncated = false
@@ -173,7 +184,7 @@ export function TranscriptionPreview({ callId, compact = false, full = false, un
     }
 
     transcriptionEl = (
-      <p className="text-sm text-muted-foreground italic">
+      <p className="text-sm text-muted-foreground italic" style={lineClampStyle}>
         {truncatedWords.map((cw, i) => {
           const color = cw.unitRid !== null
             ? getUnitColorByRid(cw.unitRid, uniqueUnits)
@@ -192,12 +203,15 @@ export function TranscriptionPreview({ callId, compact = false, full = false, un
     )
   } else {
     // Fallback to plain text display
-    const text = !full && entry.text.length > maxLength
+    const text = !full && !useLineClamp && entry.text.length > maxLength
       ? entry.text.slice(0, maxLength).trim() + '...'
       : entry.text
 
     transcriptionEl = (
-      <p className={`text-sm text-muted-foreground italic ${full ? '' : 'truncate'}`}>
+      <p
+        className={`text-sm text-muted-foreground italic ${!full && !useLineClamp ? 'truncate' : ''}`}
+        style={lineClampStyle}
+      >
         {text}
       </p>
     )

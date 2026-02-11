@@ -1,8 +1,9 @@
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { HoverCard, HoverCardTrigger, HoverCardContent } from '@/components/ui/hover-card'
 import { useRealtimeStore } from '@/stores/useRealtimeStore'
 import { useAudioStore, selectIsPlaying } from '@/stores/useAudioStore'
 import { useTranscriptionCache } from '@/stores/useTranscriptionCache'
@@ -19,7 +20,9 @@ import {
   formatDuration,
   formatFrequency,
   formatRelativeTime,
+  formatTime,
   getTalkgroupDisplayName,
+  getUnitColorByRid,
   cn,
 } from '@/lib/utils'
 import { REFRESH_INTERVALS } from '@/lib/constants'
@@ -95,6 +98,9 @@ export default function Dashboard() {
   const [filterEmergency, setFilterEmergency] = useState(false)
   const [filterLong, setFilterLong] = useState(false)
 
+  // Pause refresh when hovering over recent calls
+  const isHoveringRef = useRef(false)
+
   const TARGET_CALLS = 24
   const FILTERED_POOL = 500 // Fetch more when filtering to find enough matches
 
@@ -158,8 +164,10 @@ export default function Dashboard() {
   const getCallKey = useCallback((c: RecentCallInfo) => c.call_id ?? '', [])
 
   // Refresh recent calls periodically - just fetch new ones and merge
+  // Skip refresh when user is hovering over the calls section
   useEffect(() => {
     const interval = setInterval(() => {
+      if (isHoveringRef.current) return // Skip refresh while hovering
       getRecentCalls(TARGET_CALLS)
         .then((res) => {
           const newCalls = res.calls
@@ -583,7 +591,11 @@ export default function Dashboard() {
             No calls match filters
           </div>
         ) : (
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div
+            className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+            onMouseEnter={() => { isHoveringRef.current = true }}
+            onMouseLeave={() => { isHoveringRef.current = false }}
+          >
             {filteredCalls.map((call) => {
               const callId = call.call_id ?? ''
               const isCurrentlyPlaying = currentCall?.callId === callId
@@ -604,57 +616,257 @@ export default function Dashboard() {
                 : null
 
               return (
-                <Card
-                  key={callId}
-                  className={cn(
-                    "transition-colors hover:bg-accent/50",
-                    isCurrentlyPlaying && "border-primary bg-primary/5"
-                  )}
-                >
-                  <CardContent className="p-3">
-                    <div className="flex items-start gap-2">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 shrink-0"
-                        onClick={() => handlePlayCall(call)}
-                        disabled={!hasAudio}
-                      >
-                        {isCurrentlyPlaying && isPlaying ? (
-                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                            <rect x="6" y="4" width="4" height="16" />
-                            <rect x="14" y="4" width="4" height="16" />
-                          </svg>
-                        ) : (
-                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                            <polygon points="5 3 19 12 5 21 5 3" />
-                          </svg>
-                        )}
-                      </Button>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5">
-                          <Link
-                            to={`/calls/${callId}`}
-                            className={cn("truncate font-medium text-sm hover:underline", !tgColor && "text-sky-400")}
-                            style={tgColor ? { color: tgColor } : undefined}
+                <HoverCard key={callId} openDelay={300} closeDelay={100}>
+                  <HoverCardTrigger asChild>
+                    <Card
+                      className={cn(
+                        "transition-colors hover:bg-accent/50 cursor-pointer",
+                        isCurrentlyPlaying && "border-primary bg-primary/5"
+                      )}
+                    >
+                      <CardContent className="p-3">
+                        <div className="flex items-start gap-2">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 shrink-0"
+                            onClick={() => handlePlayCall(call)}
+                            disabled={!hasAudio}
                           >
-                            {getTalkgroupDisplayName(call.tgid, call.tg_alpha_tag)}
-                          </Link>
-                          {call.emergency && (
-                            <Badge variant="destructive" className="text-[10px] px-1 py-0">!</Badge>
-                          )}
-                          {call.encrypted && (
-                            <Badge variant="secondary" className="text-[10px] px-1 py-0">ENC</Badge>
-                          )}
-                          <span className="text-xs text-muted-foreground">
-                            {formatDuration(call.duration)} • {formatRelativeTime(call.start_time)}
-                          </span>
+                            {isCurrentlyPlaying && isPlaying ? (
+                              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                                <rect x="6" y="4" width="4" height="16" />
+                                <rect x="14" y="4" width="4" height="16" />
+                              </svg>
+                            ) : (
+                              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                                <polygon points="5 3 19 12 5 21 5 3" />
+                              </svg>
+                            )}
+                          </Button>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5">
+                              <Link
+                                to={`/talkgroups/${sysid}:${call.tgid}`}
+                                className={cn("truncate font-medium text-sm hover:underline", !tgColor && "text-sky-400")}
+                                style={tgColor ? { color: tgColor } : undefined}
+                              >
+                                {getTalkgroupDisplayName(call.tgid, call.tg_alpha_tag)}
+                              </Link>
+                              {call.emergency && (
+                                <Badge variant="destructive" className="text-[10px] px-1 py-0">!</Badge>
+                              )}
+                              {call.encrypted && (
+                                <Badge variant="secondary" className="text-[10px] px-1 py-0">ENC</Badge>
+                              )}
+                              <span className="text-xs text-muted-foreground">
+                                {formatDuration(call.duration)} • {formatRelativeTime(call.start_time)}
+                              </span>
+                            </div>
+                            <Link to={`/calls/${callId}`} className="block hover:opacity-80">
+                              <TranscriptionPreview callId={callId} maxLines={2} units={call.units} showUnits />
+                            </Link>
+                          </div>
                         </div>
-                        <TranscriptionPreview callId={callId} full units={call.units} showUnits />
+                      </CardContent>
+                    </Card>
+                  </HoverCardTrigger>
+                  <HoverCardContent side="top" className="w-96 bg-zinc-900 border-zinc-700 shadow-xl">
+                    <div className="space-y-3">
+                      {/* Talkgroup header */}
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={cn("font-medium", !tgColor && "text-sky-400")}
+                              style={tgColor ? { color: tgColor } : undefined}
+                            >
+                              {getTalkgroupDisplayName(call.tgid, call.tg_alpha_tag)}
+                            </span>
+                            {cachedTg?.tag && (
+                              <span className="text-xs text-muted-foreground">{cachedTg.tag}</span>
+                            )}
+                          </div>
+                          <div className="flex gap-1">
+                            {call.emergency && <Badge variant="destructive">EMERGENCY</Badge>}
+                            {call.encrypted && <Badge variant="secondary">ENCRYPTED</Badge>}
+                          </div>
+                        </div>
+                        {/* Talkgroup details */}
+                        {cachedTg && (cachedTg.description || cachedTg.group) && (
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            {cachedTg.description && <p>{cachedTg.description}</p>}
+                            {cachedTg.group && <p>{cachedTg.group}</p>}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Call details grid */}
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        <div>
+                          <p className="text-muted-foreground text-xs">Time</p>
+                          <p className="font-mono">{formatTime(call.start_time)}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground text-xs">Duration</p>
+                          <p className="font-mono">{formatDuration(call.duration)}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground text-xs">Frequency</p>
+                          <p className="font-mono">{formatFrequency(call.freq)}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground text-xs">System</p>
+                          <p>{call.system || sysid}</p>
+                        </div>
+                      </div>
+
+                      {/* Units */}
+                      {call.units && call.units.length > 0 && (
+                        <div>
+                          <p className="text-muted-foreground text-xs mb-1">Units ({call.units.length})</p>
+                          <div className="flex flex-wrap gap-1">
+                            {call.units.slice(0, 8).map((unit, i) => (
+                              <Badge key={i} variant="outline" className="text-xs">
+                                {unit.unit_tag || unit.unit_id}
+                              </Badge>
+                            ))}
+                            {call.units.length > 8 && (
+                              <Badge variant="outline" className="text-xs">
+                                +{call.units.length - 8} more
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Full transcription with speaker attribution */}
+                      {(() => {
+                        const transcriptionEntry = getEntry(callId)
+                        if (!transcriptionEntry?.status || transcriptionEntry.status !== 'loaded' || !transcriptionEntry.text) {
+                          return null
+                        }
+
+                        const { words, transmissions } = transcriptionEntry
+
+                        // If we have word-level data and transmissions, show speaker-attributed format
+                        if (words && words.length > 0 && transmissions && transmissions.length > 0) {
+                          // Build transmission ranges
+                          const ranges = transmissions
+                            .map(tx => {
+                              const start = (tx.position != null && tx.position >= 0) ? tx.position : 0
+                              const duration = (tx.duration != null && tx.duration > 0) ? tx.duration : 0
+                              return { start, end: start + duration, unit_rid: tx.unit_rid }
+                            })
+                            .sort((a, b) => a.start - b.start)
+
+                          // Get unique unit RIDs in order of appearance
+                          const uniqueUnitRids: number[] = []
+                          const seenUnits = new Set<number>()
+                          for (const tx of [...transmissions].sort((a, b) => {
+                            const posA = (a.position != null && a.position >= 0) ? a.position : 0
+                            const posB = (b.position != null && b.position >= 0) ? b.position : 0
+                            return posA - posB
+                          })) {
+                            if (!seenUnits.has(tx.unit_rid)) {
+                              seenUnits.add(tx.unit_rid)
+                              uniqueUnitRids.push(tx.unit_rid)
+                            }
+                          }
+
+                          // Find speaker for a word
+                          const findSpeaker = (wordStart: number, wordEnd: number): number | null => {
+                            let bestMatch: { unit_rid: number; overlap: number } | null = null
+                            for (const range of ranges) {
+                              const overlapStart = Math.max(wordStart, range.start)
+                              const overlapEnd = Math.min(wordEnd, range.end)
+                              const overlap = Math.max(0, overlapEnd - overlapStart)
+                              if (overlap > 0 && (bestMatch === null || overlap > bestMatch.overlap)) {
+                                bestMatch = { unit_rid: range.unit_rid, overlap }
+                              }
+                            }
+                            return bestMatch?.unit_rid ?? null
+                          }
+
+                          // Build unit tag lookup
+                          const unitTagMap = new Map<number, string>()
+                          for (const u of call.units || []) {
+                            unitTagMap.set(u.unit_id, u.unit_tag || `Unit ${u.unit_id}`)
+                          }
+
+                          // Group consecutive words by speaker
+                          interface SpeakerSegment {
+                            unitRid: number | null
+                            words: string[]
+                          }
+                          const segments: SpeakerSegment[] = []
+                          let currentSegment: SpeakerSegment | null = null
+
+                          for (const w of words) {
+                            const speaker = findSpeaker(w.start, w.end)
+                            if (!currentSegment || currentSegment.unitRid !== speaker) {
+                              currentSegment = { unitRid: speaker, words: [] }
+                              segments.push(currentSegment)
+                            }
+                            currentSegment.words.push(w.word)
+                          }
+
+                          return (
+                            <div>
+                              <p className="text-muted-foreground text-xs mb-1">Transcription</p>
+                              <div className="text-sm max-h-40 overflow-y-auto space-y-1">
+                                {segments.map((seg, i) => {
+                                  const unitColor = seg.unitRid !== null
+                                    ? getUnitColorByRid(seg.unitRid, uniqueUnitRids)
+                                    : null
+                                  const unitName = seg.unitRid !== null
+                                    ? unitTagMap.get(seg.unitRid) || `Unit ${seg.unitRid}`
+                                    : 'Unknown'
+                                  return (
+                                    <p key={i}>
+                                      <span className={cn("font-medium", unitColor?.text)}>
+                                        {unitName}:
+                                      </span>{' '}
+                                      <span className="italic text-muted-foreground">
+                                        {seg.words.join(' ')}
+                                      </span>
+                                    </p>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )
+                        }
+
+                        // Fallback to plain text
+                        return (
+                          <div>
+                            <p className="text-muted-foreground text-xs mb-1">Transcription</p>
+                            <p className="text-sm italic max-h-32 overflow-y-auto">
+                              {transcriptionEntry.text}
+                            </p>
+                          </div>
+                        )
+                      })()}
+
+                      {/* Links */}
+                      <div className="pt-2 border-t flex gap-2">
+                        <Link
+                          to={`/calls/${callId}`}
+                          className="text-xs text-primary hover:underline"
+                        >
+                          View call details →
+                        </Link>
+                        <Link
+                          to={`/talkgroups/${sysid}:${call.tgid}`}
+                          className="text-xs text-primary hover:underline"
+                        >
+                          View talkgroup →
+                        </Link>
                       </div>
                     </div>
-                  </CardContent>
-                </Card>
+                  </HoverCardContent>
+                </HoverCard>
               )
             })}
           </div>
