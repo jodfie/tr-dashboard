@@ -130,7 +130,7 @@ export default function Dashboard() {
     Promise.all([getStats(), getRecentCalls(TARGET_CALLS), getRecorders()])
       .then(([statsRes, recentRes, recordersRes]) => {
         setStats(statsRes)
-        setRecentCalls(recentRes.calls)
+        setRecentCalls(dedupCalls(recentRes.calls))
         setApiRecorders(recordersRes.recorders || [])
         fetchTranscriptionsForCalls(recentRes.calls)
       })
@@ -145,7 +145,7 @@ export default function Dashboard() {
 
     getRecentCalls(FILTERED_POOL)
       .then((res) => {
-        setRecentCalls(res.calls)
+        setRecentCalls(dedupCalls(res.calls))
         fetchTranscriptionsForCalls(res.calls)
       })
       .catch(console.error)
@@ -163,6 +163,17 @@ export default function Dashboard() {
   // Helper to get consistent string key for a call
   const getCallKey = useCallback((c: RecentCallInfo) => c.call_id ?? '', [])
 
+  // Dedup calls by call_id (backend may return same call from multiple sites)
+  const dedupCalls = useCallback((calls: RecentCallInfo[]) => {
+    const seen = new Set<string>()
+    return calls.filter(c => {
+      const key = getCallKey(c)
+      if (!key || seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+  }, [getCallKey])
+
   // Refresh recent calls periodically - just fetch new ones and merge
   // Skip refresh when user is hovering over the calls section
   useEffect(() => {
@@ -172,19 +183,18 @@ export default function Dashboard() {
         .then((res) => {
           const newCalls = res.calls
           setRecentCalls((prev) => {
-            // Merge: new calls first, then existing calls not in new batch
-            // Use consistent string keys to avoid type mismatch
-            const newIds = new Set(newCalls.map(getCallKey))
+            // Dedup new batch, then merge with existing (new wins)
+            const deduped = dedupCalls(newCalls)
+            const newIds = new Set(deduped.map(getCallKey))
             const kept = prev.filter(c => !newIds.has(getCallKey(c)))
-            const merged = [...newCalls, ...kept].slice(0, FILTERED_POOL)
-            return merged
+            return [...deduped, ...kept].slice(0, FILTERED_POOL)
           })
           fetchTranscriptionsForCalls(newCalls)
         })
         .catch(console.error)
     }, REFRESH_INTERVALS.RECENT_CALLS)
     return () => clearInterval(interval)
-  }, [fetchTranscriptionsForCalls, getCallKey])
+  }, [fetchTranscriptionsForCalls, getCallKey, dedupCalls])
 
   // Refresh recorders periodically (to get updated counts)
   useEffect(() => {
