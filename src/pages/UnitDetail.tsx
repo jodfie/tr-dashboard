@@ -5,7 +5,6 @@ import { Badge } from '@/components/ui/badge'
 import { CallList } from '@/components/calls/CallList'
 import { getUnit, getUnitEvents, getUnitCalls } from '@/api/client'
 import type { Unit, UnitEvent, Call } from '@/api/types'
-import { useTalkgroupCache } from '@/stores/useTalkgroupCache'
 import {
   formatDateTime,
   formatRelativeTime,
@@ -21,7 +20,6 @@ export default function UnitDetail() {
   const [calls, setCalls] = useState<Call[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const getAlphaTag = useTalkgroupCache((s) => s.getAlphaTag)
 
   useEffect(() => {
     if (!id) return
@@ -29,7 +27,7 @@ export default function UnitDetail() {
     setLoading(true)
     setError(null)
 
-    // id is now in format "sysid:unit_id" or plain "unit_id"
+    // id is in format "system_id:unit_id" or plain "unit_id"
     Promise.all([
       getUnit(id),
       getUnitEvents(id, { limit: 50 }),
@@ -43,7 +41,7 @@ export default function UnitDetail() {
       .catch((err) => {
         console.error(err)
         if (err.status === 409) {
-          setError('This unit ID exists in multiple systems. Please use the format sysid:unit_id.')
+          setError('This unit ID exists in multiple systems. Please use the format system_id:unit_id.')
         } else {
           setError('Failed to load unit details')
         }
@@ -86,7 +84,10 @@ export default function UnitDetail() {
         <h1 className="text-2xl font-bold">
           {unit.alpha_tag || `Unit ${unit.unit_id}`}
         </h1>
-        <p className="text-muted-foreground">Radio Unit ID: {unit.unit_id}</p>
+        <p className="text-muted-foreground">
+          Radio Unit ID: {unit.unit_id}
+          {unit.system_name && ` • ${unit.system_name}`}
+        </p>
       </div>
 
       {/* Info badges */}
@@ -118,8 +119,12 @@ export default function UnitDetail() {
               </p>
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">System ID</p>
-              <p className="font-mono">{unit.sysid}</p>
+              <p className="text-sm text-muted-foreground">System</p>
+              <p>
+                {unit.system_name && <span className="font-medium">{unit.system_name}</span>}
+                {unit.system_name && ' '}
+                <span className="font-mono text-muted-foreground">({unit.system_id})</span>
+              </p>
             </div>
             {unit.last_event_type && (
               <div>
@@ -145,44 +150,38 @@ export default function UnitDetail() {
               <p className="text-muted-foreground">No events recorded</p>
             ) : (
               <div className="space-y-2 max-h-96 overflow-auto">
-                {events.map((event) => {
-                  // Look up alpha tag from cache
-                  const alphaTag = event.tg_sysid
-                    ? getAlphaTag(event.tg_sysid, event.tgid)
-                    : undefined
-                  return (
-                    <div
-                      key={event.id}
-                      className="flex items-center justify-between rounded-lg border bg-card p-3"
-                    >
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <Badge variant="secondary" className="text-xs">
-                            {getEventTypeLabel(event.event_type)}
-                          </Badge>
-                          {event.tg_sysid ? (
-                            <Link
-                              to={`/talkgroups/${event.tg_sysid}:${event.tgid}`}
-                              className={`${getEventTypeColor(event.event_type)} hover:underline`}
-                            >
-                              {getTalkgroupDisplayName(event.tgid, alphaTag)}
-                            </Link>
-                          ) : (
-                            <span className={getEventTypeColor(event.event_type)}>
-                              {getTalkgroupDisplayName(event.tgid, alphaTag)}
-                            </span>
-                          )}
-                        </div>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {formatDateTime(event.time)}
-                        </p>
+                {events.map((event) => (
+                  <div
+                    key={event.id}
+                    className="flex items-center justify-between rounded-lg border bg-card p-3"
+                  >
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="secondary" className="text-xs">
+                          {getEventTypeLabel(event.event_type)}
+                        </Badge>
+                        {event.system_id && event.tgid ? (
+                          <Link
+                            to={`/talkgroups/${event.system_id}:${event.tgid}`}
+                            className={`${getEventTypeColor(event.event_type)} hover:underline`}
+                          >
+                            {getTalkgroupDisplayName(event.tgid, event.tg_alpha_tag)}
+                          </Link>
+                        ) : event.tgid ? (
+                          <span className={getEventTypeColor(event.event_type)}>
+                            {getTalkgroupDisplayName(event.tgid, event.tg_alpha_tag)}
+                          </span>
+                        ) : null}
                       </div>
-                      <span className="text-xs text-muted-foreground">
-                        {formatRelativeTime(event.time)}
-                      </span>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {formatDateTime(event.time)}
+                      </p>
                     </div>
-                  )
-                })}
+                    <span className="text-xs text-muted-foreground">
+                      {formatRelativeTime(event.time)}
+                    </span>
+                  </div>
+                ))}
               </div>
             )}
           </CardContent>

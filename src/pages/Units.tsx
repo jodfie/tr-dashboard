@@ -5,16 +5,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Pagination } from '@/components/ui/pagination'
-import { getUnits, getActiveUnits, getSystems } from '@/api/client'
+import { getUnits, getSystems } from '@/api/client'
 import type { Unit, System } from '@/api/types'
 import { getUnitDisplayName, formatRelativeTime, getEventTypeLabel } from '@/lib/utils'
 
 const DEFAULT_PAGE_SIZE = 50
-
-// Helper to create unit key for links
-function unitKey(sysid: string, unit_id: number): string {
-  return `${sysid}:${unit_id}`
-}
 
 export default function Units() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -27,7 +22,7 @@ export default function Units() {
   const page = parseInt(searchParams.get('page') || '1', 10)
   const pageSize = parseInt(searchParams.get('size') || String(DEFAULT_PAGE_SIZE), 10)
   const search = searchParams.get('search') || ''
-  const sysidFilter = searchParams.get('sysid') || ''
+  const systemFilter = searchParams.get('system_id') || ''
   const sortBy = (searchParams.get('sort') as 'alpha_tag' | 'unit_id' | 'last_seen') || 'last_seen'
   const sortDir = (searchParams.get('dir') as 'asc' | 'desc') || 'desc'
 
@@ -35,41 +30,29 @@ export default function Units() {
 
   // Fetch systems for filter
   useEffect(() => {
-    getSystems().then((res) => setSystems(res.sites)).catch(console.error)
+    getSystems().then((res) => setSystems(res.systems)).catch(console.error)
   }, [])
 
   // Fetch units
   useEffect(() => {
     setLoading(true)
 
-    const fetchFn = activeView
-      ? () =>
-          getActiveUnits({
-            window: 10,
-            sysid: sysidFilter || undefined,
-            sort: sortBy,
-            sort_dir: sortDir,
-            limit: pageSize,
-            offset,
-          })
-      : () =>
-          getUnits({
-            sysid: sysidFilter || undefined,
-            search: search || undefined,
-            sort: sortBy,
-            sort_dir: sortDir,
-            limit: pageSize,
-            offset,
-          })
-
-    fetchFn()
+    getUnits({
+      sysid: systemFilter || undefined,
+      search: search || undefined,
+      active_within: activeView ? 10 : undefined,
+      sort: sortBy,
+      sort_dir: sortDir,
+      limit: pageSize,
+      offset,
+    })
       .then((res) => {
         setUnits(res.units || [])
-        setTotalCount(res.count)
+        setTotalCount(res.total)
       })
       .catch(console.error)
       .finally(() => setLoading(false))
-  }, [page, pageSize, search, sysidFilter, sortBy, sortDir, offset, activeView])
+  }, [page, pageSize, search, systemFilter, sortBy, sortDir, offset, activeView])
 
   const updateParam = useCallback(
     (key: string, value: string) => {
@@ -157,14 +140,14 @@ export default function Units() {
             )}
 
             <select
-              value={sysidFilter}
-              onChange={(e) => updateParam('sysid', e.target.value)}
+              value={systemFilter}
+              onChange={(e) => updateParam('system_id', e.target.value)}
               className="rounded-md border border-input bg-background px-3 py-2 text-sm"
             >
               <option value="">All systems</option>
               {systems.map((sys) => (
-                <option key={sys.id} value={sys.sysid || ''}>
-                  {sys.short_name} {sys.sysid && `(${sys.sysid})`}
+                <option key={sys.system_id} value={sys.sysid || String(sys.system_id)}>
+                  {sys.name || `System ${sys.system_id}`}
                 </option>
               ))}
             </select>
@@ -214,9 +197,9 @@ export default function Units() {
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {units.map((unit) => (
-              <Card key={unitKey(unit.sysid, unit.unit_id)} className="hover:bg-accent/50 transition-colors">
+              <Card key={`${unit.system_id}:${unit.unit_id}`} className="hover:bg-accent/50 transition-colors">
                 <CardContent className="p-4">
-                  <Link to={`/units/${unit.sysid}:${unit.unit_id}`}>
+                  <Link to={`/units/${unit.system_id}:${unit.unit_id}`}>
                     <div className="flex items-center justify-between">
                       <h3 className="font-semibold hover:underline">
                         {getUnitDisplayName(unit.unit_id, unit.alpha_tag)}
