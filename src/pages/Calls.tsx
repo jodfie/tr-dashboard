@@ -6,7 +6,6 @@ import { Pagination } from '@/components/ui/pagination'
 import { CallList } from '@/components/calls/CallList'
 import { getCalls, getTalkgroups, getSystems } from '@/api/client'
 import type { Call, Talkgroup, System } from '@/api/types'
-import { useTranscriptionCache } from '@/stores/useTranscriptionCache'
 
 const DEFAULT_PAGE_SIZE = 25
 
@@ -29,41 +28,30 @@ export default function Calls() {
   useEffect(() => {
     Promise.all([getSystems(), getTalkgroups({ limit: 100 })])
       .then(([sysRes, tgRes]) => {
-        setSystems(sysRes.sites || [])
+        setSystems(sysRes.systems || [])
         setTalkgroups(tgRes.talkgroups || [])
       })
       .catch(console.error)
   }, [])
 
-  const fetchTranscription = useTranscriptionCache((s) => s.fetchTranscription)
-
   // Fetch calls
   useEffect(() => {
     setLoading(true)
     getCalls({
-      system: systemFilter ? parseInt(systemFilter, 10) : undefined,
-      talkgroup: talkgroupFilter ? parseInt(talkgroupFilter, 10) : undefined,
+      system_id: systemFilter || undefined,
+      tgid: talkgroupFilter || undefined,
+      sort: '-start_time',
+      deduplicate: true,
       limit: pageSize,
       offset,
     })
       .then((res) => {
-        const loadedCalls = res.calls || []
-        setCalls(loadedCalls)
-        setTotalCount(res.count)
-
-        // Fetch transcriptions for loaded calls
-        // Call type uses tg_sysid:tgid:timestamp format
-        for (const call of loadedCalls) {
-          if (call.tg_sysid && call.tgid && call.start_time) {
-            const timestamp = Math.floor(new Date(call.start_time).getTime() / 1000)
-            const callId = `${call.tg_sysid}:${call.tgid}:${timestamp}`
-            fetchTranscription(callId)
-          }
-        }
+        setCalls(res.calls || [])
+        setTotalCount(res.total)
       })
       .catch(console.error)
       .finally(() => setLoading(false))
-  }, [page, pageSize, systemFilter, talkgroupFilter, offset, fetchTranscription])
+  }, [page, pageSize, systemFilter, talkgroupFilter, offset])
 
   const updateFilter = useCallback(
     (key: string, value: string) => {
@@ -121,8 +109,8 @@ export default function Calls() {
               >
                 <option value="">All systems</option>
                 {systems.map((sys) => (
-                  <option key={sys.id} value={sys.id}>
-                    {sys.short_name}
+                  <option key={sys.system_id} value={sys.system_id}>
+                    {sys.name || `System ${sys.system_id}`}
                   </option>
                 ))}
               </select>
@@ -137,7 +125,7 @@ export default function Calls() {
               >
                 <option value="">All talkgroups</option>
                 {talkgroups.map((tg) => (
-                  <option key={`${tg.sysid}:${tg.tgid}`} value={tg.tgid}>
+                  <option key={`${tg.system_id}:${tg.tgid}`} value={tg.tgid}>
                     {tg.alpha_tag || `TG ${tg.tgid}`}
                   </option>
                 ))}
