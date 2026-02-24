@@ -2,27 +2,38 @@ import type {
   System,
   SystemListResponse,
   P25SystemListResponse,
+  Site,
   Talkgroup,
   TalkgroupListResponse,
+  TalkgroupDirectoryListResponse,
   Unit,
   UnitListResponse,
   UnitEventListResponse,
   Call,
   CallListResponse,
-  RecentCallsResponse,
-  TransmissionListResponse,
-  FrequencyListResponse,
+  ActiveCallListResponse,
+  CallTransmissionListResponse,
+  CallFrequencyListResponse,
   CallGroupListResponse,
   CallGroupDetailResponse,
+  AffiliationListResponse,
   RecorderListResponse,
-  StatsResponse,
-  ActivityResponse,
-  EncryptionStatsResponse,
-  RatesResponse,
   Transcription,
   TranscriptionSearchResponse,
   TranscriptionQueueStats,
+  StatsResponse,
+  DecodeRatesResponse,
+  TalkgroupActivityResponse,
+  EncryptionStatsResponse,
+  SystemMergeRequest,
+  SystemMergeResponse,
+  QueryRequest,
+  QueryResponse,
   HealthResponse,
+  SystemPatch,
+  SitePatch,
+  TalkgroupPatch,
+  UnitPatch,
 } from './types'
 
 const API_BASE = '/api/v1'
@@ -75,34 +86,50 @@ function buildQueryString(params: object): string {
   return query ? `?${query}` : ''
 }
 
-// Systems (recording sites)
+// =============================================================================
+// Systems
+// =============================================================================
+
 export async function getSystems(): Promise<SystemListResponse> {
   return request('/systems')
-}
-
-// P25 Systems (with nested sites)
-export async function getP25Systems(): Promise<P25SystemListResponse> {
-  return request('/p25-systems')
 }
 
 export async function getSystem(id: number): Promise<System> {
   return request(`/systems/${id}`)
 }
 
-export async function getSystemTalkgroups(
-  id: number,
-  params?: { limit?: number; offset?: number }
-): Promise<TalkgroupListResponse> {
-  return request(`/systems/${id}/talkgroups${buildQueryString(params ?? {})}`)
+export async function updateSystem(id: number, patch: SystemPatch): Promise<System> {
+  return request(`/systems/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  })
 }
 
+export async function getP25Systems(): Promise<P25SystemListResponse> {
+  return request('/p25-systems')
+}
+
+export async function getSite(id: number): Promise<Site> {
+  return request(`/sites/${id}`)
+}
+
+export async function updateSite(id: number, patch: SitePatch): Promise<Site> {
+  return request(`/sites/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  })
+}
+
+// =============================================================================
 // Talkgroups
+// =============================================================================
+
 export interface TalkgroupQueryParams {
-  sysid?: string           // Filter by P25 system ID
+  system_id?: string
+  sysid?: string
+  group?: string
   search?: string
-  group?: string           // Filter by talkgroup group
-  tag?: string             // Filter by talkgroup tag
-  sort?: 'alpha_tag' | 'tgid' | 'last_seen' | 'first_seen' | 'group' | 'call_count' | 'calls_1h' | 'calls_24h' | 'unit_count'
+  sort?: string
   sort_dir?: 'asc' | 'desc'
   limit?: number
   offset?: number
@@ -114,12 +141,17 @@ export async function getTalkgroups(
   return request(`/talkgroups${buildQueryString(params ?? {})}`)
 }
 
-// Get talkgroup by composite key: "sysid:tgid" or plain tgid (may return 409 if ambiguous)
 export async function getTalkgroup(id: string | number): Promise<Talkgroup> {
   return request(`/talkgroups/${id}`)
 }
 
-// Get calls for a talkgroup (id can be "sysid:tgid" or plain tgid)
+export async function updateTalkgroup(id: string | number, patch: TalkgroupPatch): Promise<Talkgroup> {
+  return request(`/talkgroups/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  })
+}
+
 export async function getTalkgroupCalls(
   id: string | number,
   params?: {
@@ -132,19 +164,68 @@ export async function getTalkgroupCalls(
   return request(`/talkgroups/${id}/calls${buildQueryString(params ?? {})}`)
 }
 
-export async function getEncryptionStats(
-  hours?: number
-): Promise<EncryptionStatsResponse> {
-  return request(
-    `/talkgroups/encryption-stats${buildQueryString({ hours })}`
-  )
+export async function getTalkgroupUnits(
+  id: string | number,
+  params?: {
+    window?: number
+    limit?: number
+    offset?: number
+  }
+): Promise<UnitListResponse> {
+  return request(`/talkgroups/${id}/units${buildQueryString(params ?? {})}`)
 }
 
+export async function getEncryptionStats(
+  params?: { hours?: number; sysid?: string }
+): Promise<EncryptionStatsResponse> {
+  return request(`/talkgroups/encryption-stats${buildQueryString(params ?? {})}`)
+}
+
+export async function getTalkgroupDirectory(
+  params?: {
+    system_id?: number
+    search?: string
+    category?: string
+    mode?: string
+    limit?: number
+    offset?: number
+  }
+): Promise<TalkgroupDirectoryListResponse> {
+  return request(`/talkgroup-directory${buildQueryString(params ?? {})}`)
+}
+
+export async function importTalkgroupDirectory(
+  systemIdOrName: number | string,
+  file: File
+): Promise<{ imported: number; total: number; system_id: number }> {
+  const formData = new FormData()
+  formData.append('file', file)
+  const param = typeof systemIdOrName === 'number'
+    ? `system_id=${systemIdOrName}`
+    : `system_name=${encodeURIComponent(systemIdOrName)}`
+  const url = `${API_BASE}/talkgroup-directory/import?${param}`
+  const response = await fetch(url, {
+    method: 'POST',
+    body: formData,
+  })
+  if (!response.ok) {
+    let data: unknown
+    try { data = await response.json() } catch { /* ignore */ }
+    throw new ApiError(response.status, `API error: ${response.statusText}`, data)
+  }
+  return response.json()
+}
+
+// =============================================================================
 // Units
+// =============================================================================
+
 export interface UnitQueryParams {
-  sysid?: string           // Filter by P25 system ID
+  sysid?: string
   search?: string
-  sort?: 'alpha_tag' | 'unit_id' | 'last_seen' | 'first_seen'
+  active_within?: number
+  talkgroup?: string
+  sort?: string
   sort_dir?: 'asc' | 'desc'
   limit?: number
   offset?: number
@@ -154,12 +235,29 @@ export async function getUnits(params?: UnitQueryParams): Promise<UnitListRespon
   return request(`/units${buildQueryString(params ?? {})}`)
 }
 
-// Get unit by composite key: "sysid:unit_id" or plain unit_id (may return 409 if ambiguous)
 export async function getUnit(id: string | number): Promise<Unit> {
   return request(`/units/${id}`)
 }
 
-// Get unit events (id can be "sysid:unit_id" or plain unit_id)
+export async function updateUnit(id: string | number, patch: UnitPatch): Promise<Unit> {
+  return request(`/units/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  })
+}
+
+export async function getUnitCalls(
+  id: string | number,
+  params?: {
+    start_time?: string
+    end_time?: string
+    limit?: number
+    offset?: number
+  }
+): Promise<CallListResponse> {
+  return request(`/units/${id}/calls${buildQueryString(params ?? {})}`)
+}
+
 export async function getUnitEvents(
   id: string | number,
   params?: {
@@ -174,43 +272,60 @@ export async function getUnitEvents(
   return request(`/units/${id}/events${buildQueryString(params ?? {})}`)
 }
 
-// Get unit calls (id can be "sysid:unit_id" or plain unit_id)
-export async function getUnitCalls(
-  id: string | number,
-  params?: {
-    start_time?: string
-    end_time?: string
-    limit?: number
-    offset?: number
-  }
-): Promise<CallListResponse> {
-  return request(`/units/${id}/calls${buildQueryString(params ?? {})}`)
-}
-
-export interface ActiveUnitsParams {
-  window?: number
-  sysid?: string           // Filter by P25 system ID
-  system?: number | string // Deprecated, use sysid
-  sys_name?: string
-  talkgroup?: number
-  sort?: 'alpha_tag' | 'unit_id' | 'last_seen' | 'first_seen'
-  sort_dir?: 'asc' | 'desc'
+export interface GlobalUnitEventParams {
+  system_id?: string
+  sysid?: string
+  unit_id?: string
+  type?: string
+  tgid?: string
+  emergency?: boolean
+  start_time?: string
+  end_time?: string
+  sort?: string
   limit?: number
   offset?: number
 }
 
-export async function getActiveUnits(
-  params?: ActiveUnitsParams
-): Promise<UnitListResponse> {
-  return request(`/units/active${buildQueryString(params ?? {})}`)
+export async function getGlobalUnitEvents(
+  params?: GlobalUnitEventParams
+): Promise<UnitEventListResponse> {
+  return request(`/unit-events${buildQueryString(params ?? {})}`)
 }
 
+export interface AffiliationQueryParams {
+  system_id?: string
+  sysid?: string
+  tgid?: string
+  unit_id?: string
+  status?: 'affiliated' | 'off'
+  stale_threshold?: number
+  active_within?: number
+  limit?: number
+  offset?: number
+}
+
+export async function getUnitAffiliations(
+  params?: AffiliationQueryParams
+): Promise<AffiliationListResponse> {
+  return request(`/unit-affiliations${buildQueryString(params ?? {})}`)
+}
+
+// =============================================================================
 // Calls
+// =============================================================================
+
 export interface CallQueryParams {
-  system?: number
-  talkgroup?: number
+  sysid?: string
+  system_id?: string
+  site_id?: string
+  tgid?: string
+  unit_id?: string
+  emergency?: boolean
+  encrypted?: boolean
+  deduplicate?: boolean
   start_time?: string
   end_time?: string
+  sort?: string
   limit?: number
   offset?: number
 }
@@ -219,91 +334,113 @@ export async function getCalls(params?: CallQueryParams): Promise<CallListRespon
   return request(`/calls${buildQueryString(params ?? {})}`)
 }
 
-export async function getCall(id: number | string): Promise<Call> {
+export async function getActiveCalls(
+  params?: {
+    sysid?: string
+    tgid?: number
+    emergency?: boolean
+    encrypted?: boolean
+  }
+): Promise<ActiveCallListResponse> {
+  return request(`/calls/active${buildQueryString(params ?? {})}`)
+}
+
+export async function getCall(id: number): Promise<Call> {
   return request(`/calls/${id}`)
 }
 
-export function getCallAudioUrl(id: number | string): string {
+export function getCallAudioUrl(id: number): string {
   return `${API_BASE}/calls/${id}/audio`
 }
 
 export async function getCallTransmissions(
-  id: number | string
-): Promise<TransmissionListResponse> {
+  id: number
+): Promise<CallTransmissionListResponse> {
   return request(`/calls/${id}/transmissions`)
 }
 
 export async function getCallFrequencies(
-  id: number | string
-): Promise<FrequencyListResponse> {
+  id: number
+): Promise<CallFrequencyListResponse> {
   return request(`/calls/${id}/frequencies`)
 }
 
-export interface ActiveCallsParams {
-  system?: number | string
-  sys_name?: string
-  talkgroup?: number
-  emergency?: boolean
-  encrypted?: boolean
-  limit?: number
-  offset?: number
-}
-
-export async function getActiveCalls(
-  params?: ActiveCallsParams
-): Promise<CallListResponse> {
-  return request(`/calls/active${buildQueryString(params ?? {})}`)
-}
-
-export async function getActiveCallsRealtime(): Promise<CallListResponse> {
-  return request('/calls/active/realtime')
-}
-
-export async function getRecentCalls(
-  limit?: number,
-  deduplicate?: boolean
-): Promise<RecentCallsResponse> {
-  // Backend deduplicates by default; only pass param if explicitly set to false
-  const params = deduplicate === false ? { limit, deduplicate } : { limit }
-  return request(`/calls/recent${buildQueryString(params)}`)
-}
-
+// =============================================================================
 // Transcriptions
+// =============================================================================
+
 export async function getCallTranscription(
-  id: number | string
+  id: number
 ): Promise<Transcription> {
   return request(`/calls/${id}/transcription`)
 }
 
-export async function transcribeCall(
-  id: number | string,
-  priority?: number
-): Promise<{ status: string; message: string }> {
-  return request(`/calls/${id}/transcribe`, {
-    method: 'POST',
-    body: JSON.stringify({ priority }),
+export async function listCallTranscriptions(
+  id: number
+): Promise<{ transcriptions: Transcription[]; total: number }> {
+  return request(`/calls/${id}/transcriptions`)
+}
+
+export async function submitTranscription(
+  id: number,
+  data: { text: string; source?: string; provider?: string; language?: string; words?: object | null }
+): Promise<{ id: number; call_id: number; source: string }> {
+  return request(`/calls/${id}/transcription`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
   })
+}
+
+export async function transcribeCall(
+  id: number
+): Promise<{ call_id: number; status: string }> {
+  return request(`/calls/${id}/transcribe`, { method: 'POST' })
+}
+
+export async function verifyTranscription(
+  id: number
+): Promise<{ call_id: number; status: string }> {
+  return request(`/calls/${id}/transcription/verify`, { method: 'POST' })
+}
+
+export async function rejectTranscription(
+  id: number
+): Promise<{ call_id: number; status: string }> {
+  return request(`/calls/${id}/transcription/reject`, { method: 'POST' })
+}
+
+export async function excludeFromDataset(
+  id: number
+): Promise<{ call_id: number; status: string }> {
+  return request(`/calls/${id}/transcription/exclude`, { method: 'POST' })
 }
 
 export async function searchTranscriptions(
   q: string,
-  params?: { limit?: number; offset?: number }
+  params?: {
+    system_id?: string
+    tgid?: string
+    site_id?: string
+    start_time?: string
+    end_time?: string
+    limit?: number
+    offset?: number
+  }
 ): Promise<TranscriptionSearchResponse> {
   return request(`/transcriptions/search${buildQueryString({ q, ...params })}`)
 }
 
-export async function getRecentTranscriptions(
-  params?: { limit?: number; offset?: number }
-): Promise<TranscriptionSearchResponse> {
-  return request(`/transcriptions/recent${buildQueryString(params ?? {})}`)
+export async function getTranscriptionQueueStatus(): Promise<TranscriptionQueueStats> {
+  return request('/transcriptions/queue')
 }
 
-export async function getTranscriptionStatus(): Promise<TranscriptionQueueStats> {
-  return request('/transcription/status')
-}
-
+// =============================================================================
 // Call Groups
+// =============================================================================
+
 export async function getCallGroups(params?: {
+  sysid?: string
+  tgid?: string
   start_time?: string
   end_time?: string
   limit?: number
@@ -316,12 +453,18 @@ export async function getCallGroup(id: number): Promise<CallGroupDetailResponse>
   return request(`/call-groups/${id}`)
 }
 
+// =============================================================================
 // Recorders
+// =============================================================================
+
 export async function getRecorders(): Promise<RecorderListResponse> {
   return request('/recorders')
 }
 
+// =============================================================================
 // Statistics
+// =============================================================================
+
 export async function getStats(): Promise<StatsResponse> {
   return request('/stats')
 }
@@ -329,21 +472,54 @@ export async function getStats(): Promise<StatsResponse> {
 export async function getDecodeRates(params?: {
   start_time?: string
   end_time?: string
-}): Promise<RatesResponse> {
+}): Promise<DecodeRatesResponse> {
   return request(`/stats/rates${buildQueryString(params ?? {})}`)
 }
 
-export async function getActivity(): Promise<ActivityResponse> {
-  return request('/stats/activity')
+export async function getTalkgroupActivity(params?: {
+  system_id?: string
+  site_id?: string
+  tgid?: string
+  after?: string
+  before?: string
+  sort?: string
+  limit?: number
+  offset?: number
+}): Promise<TalkgroupActivityResponse> {
+  return request(`/stats/talkgroup-activity${buildQueryString(params ?? {})}`)
 }
 
-// Health check (root level endpoint, not under /api/v1)
+// =============================================================================
+// Admin
+// =============================================================================
+
+export async function mergeSystems(req: SystemMergeRequest): Promise<SystemMergeResponse> {
+  return request('/admin/systems/merge', {
+    method: 'POST',
+    body: JSON.stringify(req),
+  })
+}
+
+export async function executeQuery(
+  sql: string,
+  params?: unknown[],
+  limit?: number
+): Promise<QueryResponse> {
+  const body: QueryRequest = { sql }
+  if (params) body.params = params
+  if (limit) body.limit = limit
+  return request('/query', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+}
+
+// =============================================================================
+// Health
+// =============================================================================
+
 export async function getHealth(): Promise<HealthResponse> {
-  const response = await fetch('/health')
-  if (!response.ok) {
-    throw new ApiError(response.status, `Health check failed: ${response.statusText}`)
-  }
-  return response.json()
+  return request('/health')
 }
 
 export { ApiError }
