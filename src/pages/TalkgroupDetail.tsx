@@ -3,12 +3,11 @@ import { useParams, Link } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { getTalkgroup, getTalkgroupCalls, getSystems } from '@/api/client'
-import type { Talkgroup, Call, System } from '@/api/types'
+import { getTalkgroup, getTalkgroupCalls } from '@/api/client'
+import type { Talkgroup, Call } from '@/api/types'
 import { useFilterStore } from '@/stores/useFilterStore'
 import { useMonitorStore } from '@/stores/useMonitorStore'
 import { useRealtimeStore } from '@/stores/useRealtimeStore'
-import { useTranscriptionCache } from '@/stores/useTranscriptionCache'
 import { useAudioStore, selectIsPlaying } from '@/stores/useAudioStore'
 import { formatDateTime, formatRelativeTime, formatDuration, formatTime, formatFrequency, getUnitColorByRid } from '@/lib/utils'
 import { TranscriptionPreview } from '@/components/calls/TranscriptionPreview'
@@ -17,7 +16,6 @@ export default function TalkgroupDetail() {
   const { id } = useParams<{ id: string }>()
   const [talkgroup, setTalkgroup] = useState<Talkgroup | null>(null)
   const [calls, setCalls] = useState<Call[]>([])
-  const [systems, setSystems] = useState<System[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [unitSort, setUnitSort] = useState<'alpha_tag' | 'unit_id' | 'count'>('count')
@@ -35,9 +33,6 @@ export default function TalkgroupDetail() {
 
   // Real-time updates
   const activeCalls = useRealtimeStore((s) => s.activeCalls)
-  const recentCalls = useRealtimeStore((s) => s.recentCalls)
-
-  const fetchTranscription = useTranscriptionCache((s) => s.fetchTranscription)
 
   // Audio store for playback
   const loadCall = useAudioStore((s) => s.loadCall)
@@ -45,11 +40,6 @@ export default function TalkgroupDetail() {
   const clearQueue = useAudioStore((s) => s.clearQueue)
   const currentCall = useAudioStore((s) => s.currentCall)
   const isPlaying = useAudioStore(selectIsPlaying)
-
-  // Fetch systems for name lookup
-  useEffect(() => {
-    getSystems().then((res) => setSystems(res.sites)).catch(console.error)
-  }, [])
 
   useEffect(() => {
     if (!id) return
@@ -60,126 +50,45 @@ export default function TalkgroupDetail() {
     Promise.all([getTalkgroup(id), getTalkgroupCalls(id, { limit: 100 })])
       .then(([tgRes, callsRes]) => {
         setTalkgroup(tgRes)
-        const loadedCalls = callsRes.calls || []
-        setCalls(loadedCalls)
-
-        // Fetch transcriptions for loaded calls
-        for (const call of loadedCalls) {
-          if (call.tg_sysid && call.tgid && call.start_time) {
-            const timestamp = Math.floor(new Date(call.start_time).getTime() / 1000)
-            const callId = `${call.tg_sysid}:${call.tgid}:${timestamp}`
-            fetchTranscription(callId)
-          }
-        }
+        setCalls(callsRes.calls || [])
       })
       .catch((err) => {
         console.error(err)
         if (err.status === 409) {
-          setError('This talkgroup ID exists in multiple systems. Please use the format sysid:tgid.')
+          setError('This talkgroup ID exists in multiple systems. Please use the format system_id:tgid.')
         } else {
           setError('Failed to load talkgroup details')
         }
       })
       .finally(() => setLoading(false))
-  }, [id, fetchTranscription])
-
-  // Add new calls from WebSocket to the top of the list
-  useEffect(() => {
-    if (!talkgroup) return
-
-    // Filter recent calls for this talkgroup (compare as strings to handle type differences)
-    const newCalls = recentCalls.filter(
-      (rc) => String(rc.sysid) === String(talkgroup.sysid) && rc.tgid === talkgroup.tgid
-    )
-
-    if (newCalls.length > 0) {
-      setCalls((prev) => {
-        // Use call_id for deduplication
-        const existingIds = new Set(
-          prev.map((c) => {
-            return c.call_id
-          })
-        )
-        const toAdd = newCalls.filter((nc) => !existingIds.has(nc.call_id || ''))
-        if (toAdd.length === 0) return prev
-
-        // Convert RecentCallInfo to Call format
-        const converted: Call[] = toAdd.map((rc) => ({
-          call_id: rc.call_id,
-          call_group_id: rc.call_group_id,
-          instance_id: 0,
-          system_id: 0,
-          tr_call_id: rc.tr_call_id,
-          call_num: rc.call_num,
-          start_time: rc.start_time,
-          stop_time: rc.stop_time,
-          duration: rc.duration,
-          call_state: 0,
-          mon_state: 0,
-          encrypted: rc.encrypted,
-          emergency: rc.emergency,
-          phase2_tdma: false,
-          tdma_slot: 0,
-          conventional: false,
-          analog: false,
-          audio_type: 'wav',
-          freq: rc.freq,
-          audio_url: rc.audio_url,
-          tg_sysid: rc.sysid,
-          tgid: rc.tgid,
-          tg_alpha_tag: rc.tg_alpha_tag,
-          units: rc.units?.map((u) => ({ unit_rid: u.unit_id, alpha_tag: u.unit_tag })),
-        }))
-
-        // Fetch transcriptions for new calls
-        for (const call of converted) {
-          if (call.tg_sysid && call.tgid && call.start_time) {
-            const timestamp = Math.floor(new Date(call.start_time).getTime() / 1000)
-            const callId = `${call.tg_sysid}:${call.tgid}:${timestamp}`
-            fetchTranscription(callId)
-          }
-        }
-
-        return [...converted, ...prev]
-      })
-    }
-  }, [recentCalls, talkgroup, fetchTranscription])
-
-  // Get system name from sysid
-  const systemName = useMemo(() => {
-    if (!talkgroup) return null
-    const sys = systems.find((s) => s.sysid === talkgroup.sysid)
-    return sys?.short_name || null
-  }, [systems, talkgroup])
+  }, [id])
 
   // Check for active call on this talkgroup
   const activeCall = useMemo(() => {
     if (!talkgroup) return null
     return Array.from(activeCalls.values()).find(
-      (call) => call.sysid === talkgroup.sysid && call.talkgroup === talkgroup.tgid && call.isActive
-    )
+      (call) => call.system_id === talkgroup.system_id && call.tgid === talkgroup.tgid
+    ) ?? null
   }, [activeCalls, talkgroup])
 
-  // Extract unique units from all calls
+  // Extract unique units from all calls using CallUnit data
   const unitStats = useMemo(() => {
     const unitMap = new Map<number, { unit_id: number; alpha_tag: string; count: number }>()
 
     for (const call of calls) {
       if (call.units) {
         for (const unit of call.units) {
-          const unitId = unit.unit_rid
-          // Skip invalid unit IDs
-          if (unitId <= 0) continue
+          if (unit.unit_id <= 0) continue
 
-          const existing = unitMap.get(unitId)
+          const existing = unitMap.get(unit.unit_id)
           if (existing) {
             existing.count++
             if (!existing.alpha_tag && unit.alpha_tag) {
               existing.alpha_tag = unit.alpha_tag
             }
           } else {
-            unitMap.set(unitId, {
-              unit_id: unitId,
+            unitMap.set(unit.unit_id, {
+              unit_id: unit.unit_id,
               alpha_tag: unit.alpha_tag || '',
               count: 1,
             })
@@ -188,7 +97,7 @@ export default function TalkgroupDetail() {
       }
     }
 
-    let units = Array.from(unitMap.values())
+    const units = Array.from(unitMap.values())
 
     // Sort
     units.sort((a, b) => {
@@ -218,41 +127,18 @@ export default function TalkgroupDetail() {
         (a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
       )
 
-      // Find index of clicked call
-      const startIndex = sorted.findIndex((c) => c.start_time === startCall.start_time)
+      const startIndex = sorted.findIndex((c) => c.call_id === startCall.call_id)
       if (startIndex === -1) return
 
-      // Clear queue and load the clicked call
       clearQueue()
-
-      const toCallInfo = (call: Call) => ({
-        call_id: call.call_id,
-        system: systemName || '',
-        sysid: call.tg_sysid,
-        tgid: call.tgid ?? 0,
-        tg_alpha_tag: call.tg_alpha_tag,
-        duration: call.duration,
-        start_time: call.start_time,
-        stop_time: call.stop_time || '',
-        call_num: call.call_num ?? 0,
-        freq: call.freq,
-        encrypted: call.encrypted,
-        emergency: call.emergency,
-        has_audio: !!call.audio_url || !!call.audio_path,
-        audio_url: call.audio_url,
-        audio_path: call.audio_path,
-        units: call.units?.map((u) => ({ unit_id: u.unit_rid, unit_tag: u.alpha_tag })) || [],
-      })
-
-      // Load the first call
-      loadCall(toCallInfo(sorted[startIndex]))
+      loadCall(sorted[startIndex])
 
       // Queue remaining calls (after the clicked one)
       for (let i = startIndex + 1; i < sorted.length; i++) {
-        addToQueue(toCallInfo(sorted[i]))
+        addToQueue(sorted[i])
       }
     },
-    [calls, clearQueue, loadCall, addToQueue, systemName]
+    [calls, clearQueue, loadCall, addToQueue]
   )
 
   if (loading) {
@@ -278,8 +164,8 @@ export default function TalkgroupDetail() {
     )
   }
 
-  const favorite = isFavorite(talkgroup.sysid, talkgroup.tgid)
-  const monitored = isMonitored(talkgroup.sysid, talkgroup.tgid)
+  const favorite = isFavorite(talkgroup.system_id, talkgroup.tgid)
+  const monitored = isMonitored(talkgroup.system_id, talkgroup.tgid)
 
   return (
     <div className="space-y-6">
@@ -310,7 +196,7 @@ export default function TalkgroupDetail() {
           <div className="flex items-center gap-2">
             <Button
               variant={monitored ? 'default' : 'outline'}
-              onClick={() => toggleTalkgroupMonitor(talkgroup.sysid, talkgroup.tgid)}
+              onClick={() => toggleTalkgroupMonitor(talkgroup.system_id, talkgroup.tgid)}
               className={monitored ? 'bg-live hover:bg-live/90' : ''}
             >
               <svg
@@ -331,7 +217,7 @@ export default function TalkgroupDetail() {
             </Button>
             <Button
               variant={favorite ? 'default' : 'outline'}
-              onClick={() => toggleFavoriteTalkgroup(talkgroup.sysid, talkgroup.tgid)}
+              onClick={() => toggleFavoriteTalkgroup(talkgroup.system_id, talkgroup.tgid)}
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -361,7 +247,7 @@ export default function TalkgroupDetail() {
         {talkgroup.mode === 'D' && <Badge variant="outline">Digital</Badge>}
         {talkgroup.mode === 'A' && <Badge variant="outline">Analog</Badge>}
         {talkgroup.mode === 'E' && <Badge variant="destructive">Encrypted</Badge>}
-        {talkgroup.priority > 0 && <Badge variant="warning">Priority {talkgroup.priority}</Badge>}
+        {talkgroup.priority != null && talkgroup.priority > 0 && <Badge variant="warning">Priority {talkgroup.priority}</Badge>}
       </div>
 
       {/* Stats cards */}
@@ -392,7 +278,7 @@ export default function TalkgroupDetail() {
         </Card>
       </div>
 
-      {/* Details card - refined */}
+      {/* Details card */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Details</CardTitle>
@@ -413,9 +299,9 @@ export default function TalkgroupDetail() {
             <div>
               <p className="text-muted-foreground">System</p>
               <p>
-                {systemName && <span className="font-medium">{systemName}</span>}
-                {systemName && ' '}
-                <span className="font-mono text-muted-foreground">({talkgroup.sysid})</span>
+                {talkgroup.system_name && <span className="font-medium">{talkgroup.system_name}</span>}
+                {talkgroup.system_name && ' '}
+                <span className="font-mono text-muted-foreground">({talkgroup.system_id})</span>
               </p>
             </div>
             {talkgroup.mode && talkgroup.mode !== 'D' && talkgroup.mode !== 'A' && talkgroup.mode !== 'E' && (
@@ -457,7 +343,7 @@ export default function TalkgroupDetail() {
           <CardContent>
             <div className="flex flex-wrap gap-1.5">
               {unitStats.slice(0, 50).map((unit) => (
-                <Link key={unit.unit_id} to={`/units/${talkgroup.sysid}:${unit.unit_id}`}>
+                <Link key={unit.unit_id} to={`/units/${talkgroup.system_id}:${unit.unit_id}`}>
                   <Badge variant="outline" className="text-xs hover:bg-accent cursor-pointer">
                     {unit.alpha_tag || unit.unit_id}
                     <span className="ml-1 text-muted-foreground">({unit.count})</span>
@@ -488,14 +374,13 @@ export default function TalkgroupDetail() {
         ) : (
           <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))' }}>
             {calls.map((call) => {
-              const callId = call.call_id
-              const isCurrentlyPlaying = currentCall?.callId === callId
-              const units = call.units?.filter((u) => u.unit_rid > 0) || []
-              const uniqueUnitRids = [...new Set(units.map((u) => u.unit_rid))]
+              const isCurrentlyPlaying = currentCall?.callId === call.call_id
+              const units = call.units?.filter((u) => u.unit_id > 0) || []
+              const uniqueUnitIds = [...new Set(units.map((u) => u.unit_id))]
 
               return (
                 <div
-                  key={callId}
+                  key={call.call_id}
                   onClick={() => playFromCall(call)}
                   className={`rounded-md border px-3 py-2 cursor-pointer transition-colors hover:bg-accent/50 ${
                     isCurrentlyPlaying ? 'border-primary bg-primary/5' : 'bg-card'
@@ -516,10 +401,10 @@ export default function TalkgroupDetail() {
                       )}
                     </div>
                     <span className="text-xs text-muted-foreground">{formatTime(call.start_time)}</span>
-                    {call.freq > 0 && (
+                    {call.freq != null && call.freq > 0 && (
                       <span className="font-mono text-xs text-muted-foreground">{formatFrequency(call.freq)}</span>
                     )}
-                    <span className="ml-auto font-mono text-xs">{formatDuration(call.duration)}</span>
+                    <span className="ml-auto font-mono text-xs">{formatDuration(call.duration ?? 0)}</span>
                     {call.emergency && (
                       <span className="px-1 py-0.5 text-[10px] font-bold bg-destructive text-white rounded">EMERG</span>
                     )}
@@ -530,20 +415,20 @@ export default function TalkgroupDetail() {
 
                   {/* Row 2: Transcription (wraps) */}
                   <div className="text-sm mb-1">
-                    <TranscriptionPreview callId={callId} />
+                    <TranscriptionPreview callId={call.call_id} />
                   </div>
 
                   {/* Row 3: Units */}
                   {units.length > 0 && (
                     <div className="flex flex-wrap gap-1">
                       {units.map((u, i) => {
-                        const color = getUnitColorByRid(u.unit_rid, uniqueUnitRids)
+                        const color = getUnitColorByRid(u.unit_id, uniqueUnitIds)
                         return (
                           <span
                             key={i}
                             className={`px-1.5 py-0.5 text-[10px] rounded border ${color?.bg || 'bg-muted'} ${color?.text || ''} ${color?.border || ''}`}
                           >
-                            {u.alpha_tag || u.unit_rid}
+                            {u.alpha_tag || u.unit_id}
                           </span>
                         )
                       })}

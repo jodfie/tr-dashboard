@@ -8,10 +8,9 @@ import type { Talkgroup, System } from '@/api/types'
 import { useFilterStore } from '@/stores/useFilterStore'
 import { useMonitorStore } from '@/stores/useMonitorStore'
 import { useRealtimeStore } from '@/stores/useRealtimeStore'
-import { useTalkgroupCache, talkgroupKey } from '@/stores/useTalkgroupCache'
 import { useTalkgroupColors } from '@/stores/useTalkgroupColors'
 import { getHexFromTailwind } from '@/components/ui/color-picker'
-import { formatRelativeTime } from '@/lib/utils'
+import { talkgroupKey, formatRelativeTime } from '@/lib/utils'
 
 const DEFAULT_PAGE_SIZE = 30
 
@@ -48,7 +47,6 @@ export default function Talkgroups() {
   // Force re-render when these change (the state subscriptions above handle this)
   void favoriteTalkgroups
   void monitoredTalkgroups
-  const addTalkgroupsToCache = useTalkgroupCache((s) => s.addTalkgroups)
 
   // Talkgroup color rules and overrides
   const colorRules = useTalkgroupColors((s) => s.rules)
@@ -64,22 +62,10 @@ export default function Talkgroups() {
   // Subscribe to active calls for real-time highlighting
   const activeCalls = useRealtimeStore((s) => s.activeCalls)
 
-  // Timer tick to update "recently active" badges (re-render every 5 seconds)
-  const [, setTick] = useState(0)
-  useEffect(() => {
-    const hasRecentCalls = Array.from(activeCalls.values()).some(
-      (call) => !call.isActive && call.endedAt && (Date.now() - call.endedAt) < 30000
-    )
-    if (!hasRecentCalls) return
-
-    const interval = setInterval(() => setTick((t) => t + 1), 5000)
-    return () => clearInterval(interval)
-  }, [activeCalls])
-
   const page = parseInt(searchParams.get('page') || '1', 10)
   const pageSize = parseInt(searchParams.get('size') || String(DEFAULT_PAGE_SIZE), 10)
   const search = searchParams.get('search') || ''
-  const sysidFilter = searchParams.get('sysid') || ''
+  const systemFilter = searchParams.get('system_id') || ''
   const groupFilter = searchParams.get('group') || ''
   const tagFilter = searchParams.get('tag') || ''
   const sortBy = (searchParams.get('sort') as 'alpha_tag' | 'tgid' | 'last_seen' | 'call_count' | 'calls_1h' | 'calls_24h' | 'unit_count') || 'calls_24h'
@@ -89,7 +75,7 @@ export default function Talkgroups() {
 
   // Fetch systems for filter
   useEffect(() => {
-    getSystems().then((res) => setSystems(res.sites)).catch(console.error)
+    getSystems().then((res) => setSystems(res.systems)).catch(console.error)
   }, [])
 
   // Fetch all talkgroups once on mount (paginated to get all)
@@ -99,11 +85,11 @@ export default function Talkgroups() {
     async function fetchAllTalkgroups() {
       const allTgs: Talkgroup[] = []
       const batchSize = 1000
-      let offset = 0
+      let fetchOffset = 0
       let hasMore = true
 
       while (hasMore) {
-        const res = await getTalkgroups({ limit: batchSize, offset })
+        const res = await getTalkgroups({ limit: batchSize, offset: fetchOffset })
         const tgs = res.talkgroups || []
         allTgs.push(...tgs)
 
@@ -111,7 +97,7 @@ export default function Talkgroups() {
         if (tgs.length < batchSize) {
           hasMore = false
         } else {
-          offset += batchSize
+          fetchOffset += batchSize
         }
       }
 
@@ -121,7 +107,6 @@ export default function Talkgroups() {
     fetchAllTalkgroups()
       .then((tgs) => {
         setAllTalkgroups(tgs)
-        addTalkgroupsToCache(tgs)
 
         // Extract unique groups and tags for filters
         const groups = new Set<string>()
@@ -135,7 +120,7 @@ export default function Talkgroups() {
       })
       .catch(console.error)
       .finally(() => setLoading(false))
-  }, [addTalkgroupsToCache])
+  }, [])
 
   // Client-side filtering, sorting, and pagination
   const filteredAndSorted = (() => {
@@ -147,13 +132,13 @@ export default function Talkgroups() {
       description: tg.description,
       group: tg.group,
       tag: tg.tag,
-      sysid: tg.sysid,
+      system_id: tg.system_id,
       tgid: tg.tgid,
     }))
 
     // Filter by system
-    if (sysidFilter) {
-      result = result.filter((tg) => tg.sysid === sysidFilter)
+    if (systemFilter) {
+      result = result.filter((tg) => String(tg.system_id) === systemFilter)
     }
 
     // Filter by group
@@ -268,14 +253,14 @@ export default function Talkgroups() {
             </div>
 
             <select
-              value={sysidFilter}
-              onChange={(e) => updateParam('sysid', e.target.value)}
+              value={systemFilter}
+              onChange={(e) => updateParam('system_id', e.target.value)}
               className="rounded-md border border-input bg-background px-3 py-2 text-sm"
             >
               <option value="">All systems</option>
               {systems.map((sys) => (
-                <option key={sys.id} value={sys.sysid || ''}>
-                  {sys.short_name} {sys.sysid && `(${sys.sysid})`}
+                <option key={sys.system_id} value={sys.system_id}>
+                  {sys.name || `System ${sys.system_id}`}
                 </option>
               ))}
             </select>
@@ -355,42 +340,36 @@ export default function Talkgroups() {
         ) : (
           <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
             {talkgroups.map((tg) => {
-              const tgKey = talkgroupKey(tg.sysid, tg.tgid)
-              const monitored = isMonitored(tg.sysid, tg.tgid)
-              const favorite = isFavorite(tg.sysid, tg.tgid)
+              const tgKey = talkgroupKey(tg.system_id, tg.tgid)
+              const monitored = isMonitored(tg.system_id, tg.tgid)
+              const favorite = isFavorite(tg.system_id, tg.tgid)
 
               const tgFields = {
                 alpha_tag: tg.alpha_tag,
                 description: tg.description,
                 group: tg.group,
                 tag: tg.tag,
-                sysid: tg.sysid,
+                system_id: tg.system_id,
                 tgid: tg.tgid,
               }
               const colorMatch = getColorForTalkgroup(tgFields)
               const isHighlighted = shouldHighlightTalkgroup(tgFields)
-              const override = getOverride(tg.sysid, tg.tgid)
+              const override = getOverride(tg.system_id, tg.tgid)
 
-              // Check if this talkgroup has an active or recently ended call
-              const activeCall = Array.from(activeCalls.values()).find(
-                (call) => call.sysid === tg.sysid && call.talkgroup === tg.tgid
+              // Check if this talkgroup has an active call
+              const hasActiveCall = Array.from(activeCalls.values()).some(
+                (call) => call.system_id === tg.system_id && call.tgid === tg.tgid
               )
-              const hasActiveCall = activeCall?.isActive ?? false
-              // Show "recent" badge for 30 seconds after call ends
-              const isRecentlyActive = activeCall && !activeCall.isActive && activeCall.endedAt &&
-                (Date.now() - activeCall.endedAt) < 30000
 
               const bgClass = hasActiveCall
                 ? 'bg-live/15 ring-1 ring-live/50'
-                : isRecentlyActive
-                  ? 'bg-amber-500/10 ring-1 ring-amber-500/30'
-                  : isHighlighted
-                    ? 'ring-2 ring-offset-1 ring-offset-background'
-                    : monitored
-                      ? 'bg-live/5'
-                      : favorite
-                        ? 'bg-primary/5'
-                        : 'bg-card'
+                : isHighlighted
+                  ? 'ring-2 ring-offset-1 ring-offset-background'
+                  : monitored
+                    ? 'bg-live/5'
+                    : favorite
+                      ? 'bg-primary/5'
+                      : 'bg-card'
 
               // Build inline styles for colors
               const cardStyle: React.CSSProperties = {
@@ -407,7 +386,7 @@ export default function Talkgroups() {
                   {/* Action buttons - vertical on left */}
                   <div className="flex flex-col gap-0.5 shrink-0">
                     <button
-                      onClick={() => toggleTalkgroupMonitor(tg.sysid, tg.tgid)}
+                      onClick={() => toggleTalkgroupMonitor(tg.system_id, tg.tgid)}
                       className={`p-0.5 rounded ${
                         monitored
                           ? 'text-live bg-live/10'
@@ -422,7 +401,7 @@ export default function Talkgroups() {
                       </svg>
                     </button>
                     <button
-                      onClick={() => toggleFavoriteTalkgroup(tg.sysid, tg.tgid)}
+                      onClick={() => toggleFavoriteTalkgroup(tg.system_id, tg.tgid)}
                       className={`p-0.5 rounded ${
                         favorite
                           ? 'text-primary bg-primary/10'
@@ -453,19 +432,19 @@ export default function Talkgroups() {
                       {openOverrideMenu === tgKey && (
                         <div className="absolute left-0 top-full mt-1 z-50 bg-popover border rounded-md shadow-md p-1 min-w-[100px]">
                           <button
-                            onClick={() => { setOverride(tg.sysid, tg.tgid, null); setOpenOverrideMenu(null) }}
+                            onClick={() => { setOverride(tg.system_id, tg.tgid, null); setOpenOverrideMenu(null) }}
                             className={`w-full text-left text-xs px-2 py-1 rounded hover:bg-accent ${!override ? 'bg-accent' : ''}`}
                           >
                             Default
                           </button>
                           <button
-                            onClick={() => { setOverride(tg.sysid, tg.tgid, { mode: 'highlight', color: colorMatch || 'amber-500' }); setOpenOverrideMenu(null) }}
+                            onClick={() => { setOverride(tg.system_id, tg.tgid, { mode: 'highlight', color: colorMatch || 'amber-500' }); setOpenOverrideMenu(null) }}
                             className={`w-full text-left text-xs px-2 py-1 rounded hover:bg-accent ${override?.mode === 'highlight' ? 'bg-accent' : ''}`}
                           >
                             Highlight
                           </button>
                           <button
-                            onClick={() => { setOverride(tg.sysid, tg.tgid, { mode: 'hide' }); setOpenOverrideMenu(null) }}
+                            onClick={() => { setOverride(tg.system_id, tg.tgid, { mode: 'hide' }); setOpenOverrideMenu(null) }}
                             className={`w-full text-left text-xs px-2 py-1 rounded hover:bg-accent ${override?.mode === 'hide' ? 'bg-accent' : ''}`}
                           >
                             Hide
@@ -476,7 +455,7 @@ export default function Talkgroups() {
                   </div>
 
                   {/* Content */}
-                  <Link to={`/talkgroups/${tg.sysid}:${tg.tgid}`} className="flex-1 min-w-0">
+                  <Link to={`/talkgroups/${tg.system_id}:${tg.tgid}`} className="flex-1 min-w-0">
                     {/* Row 1: Name + TGID + mode + tag */}
                     <div className="flex items-center gap-1.5">
                       <span className="font-medium text-sm truncate hover:underline">
@@ -494,7 +473,7 @@ export default function Talkgroups() {
                     {tg.group && (
                       <div className="text-xs text-muted-foreground/70 truncate">{tg.group}</div>
                     )}
-                    {/* Row 4: Stats + Live/Recent badges */}
+                    {/* Row 4: Stats + Live badge */}
                     <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
                       <span><span className="text-foreground">{tg.calls_1h ?? 0}</span>/1h</span>
                       <span><span className="text-foreground">{tg.calls_24h ?? 0}</span>/24h</span>
@@ -503,11 +482,6 @@ export default function Talkgroups() {
                       {hasActiveCall && (
                         <span className="shrink-0 px-1 py-0.5 text-[10px] font-bold bg-live text-white rounded ml-auto">
                           LIVE
-                        </span>
-                      )}
-                      {isRecentlyActive && (
-                        <span className="shrink-0 px-1 py-0.5 text-[10px] font-medium bg-amber-500 text-white rounded ml-auto">
-                          RECENT
                         </span>
                       )}
                     </div>
