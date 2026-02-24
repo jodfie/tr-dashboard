@@ -1,9 +1,9 @@
 import { useMemo } from 'react'
 import { CallCard } from './CallCard'
-import type { RecentCallInfo, Call } from '@/api/types'
+import type { Call } from '@/api/types'
 
 interface CallListProps {
-  calls: (RecentCallInfo | Call)[]
+  calls: Call[]
   showSystem?: boolean
   compact?: boolean
   emptyMessage?: string
@@ -11,14 +11,11 @@ interface CallListProps {
 }
 
 // Deduplicate calls by call_group_id or call_id, keeping the first occurrence
-function deduplicateCalls(
-  calls: (RecentCallInfo | Call)[]
-): (RecentCallInfo | Call)[] {
-  const seen = new Set<string | number>()
+function deduplicateCalls(calls: Call[]): Call[] {
+  const seen = new Set<number>()
   return calls.filter((call) => {
-    // Use call_group_id, then call_id
     const groupId = call.call_group_id ?? call.call_id
-    if (groupId == null) return true  // Can't dedupe without an ID
+    if (groupId == null) return true
     if (seen.has(groupId)) {
       return false
     }

@@ -1,8 +1,8 @@
-import type { Transmission } from '@/api/types'
+import type { CallTransmission } from '@/api/types'
 import { cn } from '@/lib/utils'
 
 interface TransmissionTimelineProps {
-  transmissions: Transmission[]
+  transmissions: CallTransmission[]
   unitTags: Map<number, string>
   duration: number
   currentTime: number
@@ -10,7 +10,7 @@ interface TransmissionTimelineProps {
 }
 
 interface TransmissionLegendProps {
-  transmissions: Transmission[]
+  transmissions: CallTransmission[]
   unitTags: Map<number, string>
 }
 
@@ -26,14 +26,14 @@ export const TRANSMISSION_COLORS = [
 ]
 
 // Helper to get unit colors map - shared between timeline and legend
-function getUnitColorsMap(transmissions: Transmission[]): Map<number, string> {
+function getUnitColorsMap(transmissions: CallTransmission[]): Map<number, string> {
   const unitColors = new Map<number, string>()
   const validTransmissions = transmissions.filter(
     (tx) => tx.duration != null && tx.duration > 0
   )
   validTransmissions.forEach((tx) => {
-    if (!unitColors.has(tx.unit_rid)) {
-      unitColors.set(tx.unit_rid, TRANSMISSION_COLORS[unitColors.size % TRANSMISSION_COLORS.length])
+    if (!unitColors.has(tx.src)) {
+      unitColors.set(tx.src, TRANSMISSION_COLORS[unitColors.size % TRANSMISSION_COLORS.length])
     }
   })
   return unitColors
@@ -46,17 +46,17 @@ export function TransmissionLegend({ transmissions, unitTags }: TransmissionLege
   const unitColors = getUnitColorsMap(transmissions)
   if (unitColors.size === 0) return null
 
-  const getUnitLabel = (unitRid: number): string => {
-    const tag = unitTags.get(unitRid)
-    return tag || String(unitRid)
+  const getUnitLabel = (src: number): string => {
+    const tag = unitTags.get(src)
+    return tag || String(src)
   }
 
   return (
     <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-      {Array.from(unitColors.entries()).map(([unitRid, color]) => {
-        const label = getUnitLabel(unitRid)
+      {Array.from(unitColors.entries()).map(([src, color]) => {
+        const label = getUnitLabel(src)
         return (
-          <span key={unitRid} className="inline-flex items-center gap-1.5">
+          <span key={src} className="inline-flex items-center gap-1.5">
             <span className={cn('inline-block h-2 w-2 rounded-full', color)} />
             <span title={label}>{label}</span>
           </span>
@@ -75,42 +75,40 @@ export function TransmissionTimeline({
 }: TransmissionTimelineProps) {
   if (duration === 0 || transmissions.length === 0) return null
 
-  // Process transmissions - calculate position if missing
-  // First transmission often has no position field, meaning it starts at 0
+  // Process transmissions - use pos field, fallback to running position
   let runningPosition = 0
   const processedTransmissions = transmissions
     .filter((tx) => tx.duration != null && tx.duration > 0)
     .map((tx) => {
-      const position = tx.position != null && tx.position >= 0 ? tx.position : runningPosition
+      const position = tx.pos != null && tx.pos >= 0 ? tx.pos : runningPosition
       runningPosition = position + (tx.duration || 0)
       return { ...tx, position }
     })
 
   if (processedTransmissions.length === 0) return null
 
-  const validTransmissions = processedTransmissions
   const unitColors = getUnitColorsMap(transmissions)
 
-  const getUnitLabel = (unitRid: number): string => {
-    const tag = unitTags.get(unitRid)
-    return tag || String(unitRid)
+  const getUnitLabel = (src: number): string => {
+    const tag = unitTags.get(src)
+    return tag || String(src)
   }
 
   return (
     <div className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 h-1.5 z-10">
-      {validTransmissions.map((tx, i) => {
+      {processedTransmissions.map((tx, i) => {
         const txPosition = tx.position
         const txDuration = tx.duration!
         const left = (txPosition / duration) * 100
         const width = (txDuration / duration) * 100
-        const color = unitColors.get(tx.unit_rid) || 'bg-muted'
+        const color = unitColors.get(tx.src) || 'bg-muted'
         const isCurrentlyPlaying =
           currentTime >= txPosition && currentTime < txPosition + txDuration
-        const label = getUnitLabel(tx.unit_rid)
+        const label = getUnitLabel(tx.src)
 
         return (
           <button
-            key={tx.id || i}
+            key={i}
             onClick={() => onSeek(txPosition)}
             className={cn(
               'pointer-events-auto absolute top-0 h-full rounded-full transition-opacity hover:opacity-80',

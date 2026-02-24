@@ -1,6 +1,5 @@
-import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import type { ActiveCall } from '@/stores/useRealtimeStore'
+import type { Call } from '@/api/types'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
@@ -12,69 +11,31 @@ import {
 } from '@/lib/utils'
 
 interface ActiveCallBadgeProps {
-  call: ActiveCall
+  call: Call
   onClick?: () => void
   compact?: boolean
 }
 
-// Calculate current elapsed time based on server value + local time delta
-function calculateElapsed(call: ActiveCall): number {
-  if (!call.isActive) {
-    // Ended calls use final elapsed value
-    return call.elapsed
-  }
-  // Active calls: server elapsed + time since we received it
-  const localDelta = Math.floor((Date.now() - call.elapsedReceivedAt) / 1000)
-  return Math.max(0, call.elapsed + localDelta)
-}
-
 export function ActiveCallBadge({ call, onClick, compact = false }: ActiveCallBadgeProps) {
-  const isActive = call.isActive !== false
-  const [elapsed, setElapsed] = useState(() => calculateElapsed(call))
-
-  // Update elapsed time every second for active calls
-  useEffect(() => {
-    // Immediately sync with latest call data
-    setElapsed(calculateElapsed(call))
-
-    if (!isActive) return
-
-    const interval = setInterval(() => {
-      setElapsed(calculateElapsed(call))
-    }, 1000)
-
-    return () => clearInterval(interval)
-  }, [call, isActive])
+  const elapsed = call.duration ?? 0
+  // Get first transmitting unit from units list
+  const lastUnit = call.units?.[call.units.length - 1]
 
   if (compact) {
     return (
       <Card
-        className={cn(
-          'shrink-0 cursor-pointer transition-colors',
-          isActive
-            ? 'border-live/50 bg-live/5 hover:bg-live/10 hover:border-live'
-            : 'border-border bg-card hover:bg-accent/50'
-        )}
+        className="shrink-0 cursor-pointer transition-colors border-live/50 bg-live/5 hover:bg-live/10 hover:border-live"
         onClick={onClick}
       >
         <CardContent className="p-3">
           <div className="flex items-center gap-3">
             {/* Status indicator */}
             <div className="flex flex-col items-center gap-1">
-              {isActive ? (
-                <Badge variant="live" className="animate-pulse text-xs">
-                  <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-live" />
-                  LIVE
-                </Badge>
-              ) : (
-                <Badge variant="outline" className="text-xs text-muted-foreground">
-                  ENDED
-                </Badge>
-              )}
-              <div className={cn(
-                "font-mono text-lg tabular-nums",
-                !isActive && "text-muted-foreground"
-              )}>
+              <Badge variant="live" className="animate-pulse text-xs">
+                <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-live" />
+                LIVE
+              </Badge>
+              <div className="font-mono text-lg tabular-nums">
                 {formatDuration(elapsed)}
               </div>
             </div>
@@ -83,11 +44,11 @@ export function ActiveCallBadge({ call, onClick, compact = false }: ActiveCallBa
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
                 <Link
-                  to={`/talkgroups/${call.sysid}:${call.talkgroup}`}
+                  to={`/talkgroups/${call.system_id}:${call.tgid}`}
                   className="truncate font-semibold hover:underline"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  {getTalkgroupDisplayName(call.talkgroup, call.tgAlphaTag)}
+                  {getTalkgroupDisplayName(call.tgid, call.tg_alpha_tag)}
                 </Link>
                 {call.emergency && (
                   <Badge variant="destructive" className="text-xs px-1">!</Badge>
@@ -97,18 +58,20 @@ export function ActiveCallBadge({ call, onClick, compact = false }: ActiveCallBa
                 )}
               </div>
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <span>{call.system}</span>
-                <span className="font-mono">{formatFrequency(call.freq)}</span>
+                <span>{call.system_name || `System ${call.system_id}`}</span>
+                {call.freq != null && call.freq > 0 && (
+                  <span className="font-mono">{formatFrequency(call.freq)}</span>
+                )}
               </div>
-              {call.unit && (
+              {lastUnit && (
                 <div className="text-xs">
-                  <span className="text-muted-foreground">{isActive ? 'TX: ' : 'Last: '}</span>
+                  <span className="text-muted-foreground">TX: </span>
                   <Link
-                    to={`/units/${call.sysid}:${call.unit}`}
+                    to={`/units/${call.system_id}:${lastUnit.unit_id}`}
                     className="font-medium hover:underline"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    {call.unitAlphaTag || getUnitDisplayName(call.unit)}
+                    {lastUnit.alpha_tag || getUnitDisplayName(lastUnit.unit_id)}
                   </Link>
                 </div>
               )}
@@ -119,58 +82,47 @@ export function ActiveCallBadge({ call, onClick, compact = false }: ActiveCallBa
     )
   }
 
-  // Full size version (original layout)
+  // Full size version
   return (
     <Card
-      className={cn(
-        'cursor-pointer transition-colors',
-        isActive
-          ? 'border-live/50 bg-live/5 hover:bg-live/10 hover:border-live'
-          : 'border-border bg-card hover:bg-accent/50'
-      )}
+      className="cursor-pointer transition-colors border-live/50 bg-live/5 hover:bg-live/10 hover:border-live"
       onClick={onClick}
     >
       <CardContent className="p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              {isActive ? (
-                <Badge variant="live" className="animate-pulse">
-                  <span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-live" />
-                  LIVE
-                </Badge>
-              ) : (
-                <Badge variant="outline" className="text-muted-foreground">
-                  ENDED
-                </Badge>
-              )}
+              <Badge variant="live" className="animate-pulse">
+                <span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-live" />
+                LIVE
+              </Badge>
               <Link
-                to={`/talkgroups/${call.sysid}:${call.talkgroup}`}
+                to={`/talkgroups/${call.system_id}:${call.tgid}`}
                 className="truncate font-semibold hover:underline"
                 onClick={(e) => e.stopPropagation()}
               >
-                {getTalkgroupDisplayName(call.talkgroup, call.tgAlphaTag)}
+                {getTalkgroupDisplayName(call.tgid, call.tg_alpha_tag)}
               </Link>
             </div>
 
             <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-              <span className="text-muted-foreground">{call.system}</span>
-              <span className="font-mono text-muted-foreground">
-                {formatFrequency(call.freq)}
-              </span>
+              <span className="text-muted-foreground">{call.system_name || `System ${call.system_id}`}</span>
+              {call.freq != null && call.freq > 0 && (
+                <span className="font-mono text-muted-foreground">
+                  {formatFrequency(call.freq)}
+                </span>
+              )}
             </div>
 
-            {call.unit && (
+            {lastUnit && (
               <div className="mt-2">
-                <span className="text-sm text-muted-foreground">
-                  {isActive ? 'Transmitting: ' : 'Last unit: '}
-                </span>
+                <span className="text-sm text-muted-foreground">Transmitting: </span>
                 <Link
-                  to={`/units/${call.sysid}:${call.unit}`}
+                  to={`/units/${call.system_id}:${lastUnit.unit_id}`}
                   className="text-sm font-medium hover:underline"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  {call.unitAlphaTag || getUnitDisplayName(call.unit)}
+                  {lastUnit.alpha_tag || getUnitDisplayName(lastUnit.unit_id)}
                 </Link>
               </div>
             )}
@@ -189,10 +141,7 @@ export function ActiveCallBadge({ call, onClick, compact = false }: ActiveCallBa
           </div>
 
           <div className="text-right">
-            <div className={cn(
-              "font-mono text-xl tabular-nums",
-              !isActive && "text-muted-foreground"
-            )}>
+            <div className={cn("font-mono text-xl tabular-nums")}>
               {formatDuration(elapsed)}
             </div>
           </div>

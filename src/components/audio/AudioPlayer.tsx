@@ -342,16 +342,13 @@ export function AudioPlayer() {
             Click to Enable Audio
           </Button>
           <span className="text-sm text-muted-foreground">
-            {currentCall.sysid ? (
-              <Link
-                to={`/talkgroups/${currentCall.sysid}:${currentCall.tgid}`}
-                className="hover:underline"
-              >
-                {getTalkgroupDisplayName(currentCall.tgid, currentCall.tgAlphaTag)}
-              </Link>
-            ) : (
-              getTalkgroupDisplayName(currentCall.tgid, currentCall.tgAlphaTag)
-            )} is ready to play
+            <Link
+              to={`/talkgroups/${currentCall.systemId}:${currentCall.tgid}`}
+              className="hover:underline"
+            >
+              {getTalkgroupDisplayName(currentCall.tgid, currentCall.tgAlphaTag)}
+            </Link>
+            {' '}is ready to play
           </span>
           {queue.length > 0 && (
             <span className="text-xs text-muted-foreground">
@@ -495,19 +492,15 @@ export function AudioPlayer() {
 
         {/* Call info */}
         <div className="flex min-w-[160px] flex-col items-end">
-          {currentCall.sysid ? (
-            <Link
-              to={`/talkgroups/${currentCall.sysid}:${currentCall.tgid}`}
-              className="font-medium hover:underline"
-            >
-              {getTalkgroupDisplayName(currentCall.tgid, currentCall.tgAlphaTag)}
-            </Link>
-          ) : (
-            <span className="font-medium">
-              {getTalkgroupDisplayName(currentCall.tgid, currentCall.tgAlphaTag)}
-            </span>
-          )}
-          <span className="text-xs text-muted-foreground">{currentCall.system}</span>
+          <Link
+            to={`/talkgroups/${currentCall.systemId}:${currentCall.tgid}`}
+            className="font-medium hover:underline"
+          >
+            {getTalkgroupDisplayName(currentCall.tgid, currentCall.tgAlphaTag)}
+          </Link>
+          <span className="text-xs text-muted-foreground">
+            {currentCall.systemName || `System ${currentCall.systemId}`}
+          </span>
         </div>
 
         {/* Volume controls */}
@@ -652,7 +645,7 @@ export function AudioPlayer() {
                   setShowHistory(false)
                 }}
                 className="flex items-center gap-1.5 rounded bg-muted/50 px-2 py-1 text-xs hover:bg-muted transition-colors"
-                title={`${call.tgAlphaTag || `TG ${call.tgid}`} - ${call.system}`}
+                title={`${call.tgAlphaTag || `TG ${call.tgid}`} - ${call.systemName || `System ${call.systemId}`}`}
               >
                 <span className="font-medium truncate max-w-[120px]">
                   {call.tgAlphaTag || `TG ${call.tgid}`}
