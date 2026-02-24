@@ -10,12 +10,10 @@ import { useTranscriptionCache } from '@/stores/useTranscriptionCache'
 import { useMonitorStore } from '@/stores/useMonitorStore'
 import { useFilterStore } from '@/stores/useFilterStore'
 import { TranscriptionPreview } from '@/components/calls/TranscriptionPreview'
-import { getStats, getRecentCalls, getRecorders } from '@/api/client'
+import { getStats, getCalls, getRecorders } from '@/api/client'
 import { useTalkgroupColors } from '@/stores/useTalkgroupColors'
-import { useTalkgroupCache, talkgroupKey } from '@/stores/useTalkgroupCache'
-import type { StatsResponse, RecentCallInfo, RecorderInfo } from '@/api/types'
+import type { StatsResponse, Call, Recorder } from '@/api/types'
 import {
-  formatBytes,
   formatDecodeRate,
   formatDuration,
   formatFrequency,
@@ -27,36 +25,14 @@ import {
 } from '@/lib/utils'
 import { REFRESH_INTERVALS } from '@/lib/constants'
 
-// Recorder state config
-const RECORDER_STATES: Record<number, { label: string; badgeClass: string; cardClass: string }> = {
-  0: { label: 'MONITOR', badgeClass: 'bg-green-600 text-white', cardClass: 'border-green-600/50 bg-green-950/30' },
-  1: { label: 'RECORDING', badgeClass: 'bg-live text-white', cardClass: 'border-live/50 bg-red-950/40 shadow-sm shadow-live/30' },
-  2: { label: 'INACTIVE', badgeClass: 'bg-zinc-700 text-zinc-400', cardClass: 'border-zinc-700/30 bg-zinc-900/20' },
-  3: { label: 'ACTIVE', badgeClass: 'bg-amber-500 text-white', cardClass: 'border-amber-500/50 bg-amber-950/30' },
-  4: { label: 'IDLE', badgeClass: 'bg-amber-700 text-amber-200', cardClass: 'border-amber-700/40 bg-amber-950/20' },
-  6: { label: 'STOPPED', badgeClass: 'bg-red-900 text-red-300', cardClass: 'border-red-900/40 bg-red-950/20' },
-  7: { label: 'AVAILABLE', badgeClass: 'bg-indigo-800 text-indigo-300', cardClass: 'border-indigo-800/30 bg-indigo-950/20' },
-  8: { label: 'IGNORE', badgeClass: 'bg-zinc-800 text-zinc-500', cardClass: 'border-zinc-800/20 bg-zinc-900/10' },
+// Recorder state config - keyed by string rec_state
+const RECORDER_STATES: Record<string, { label: string; badgeClass: string; cardClass: string }> = {
+  available: { label: 'AVAILABLE', badgeClass: 'bg-indigo-800 text-indigo-300', cardClass: 'border-indigo-800/30 bg-indigo-950/20' },
+  recording: { label: 'RECORDING', badgeClass: 'bg-live text-white', cardClass: 'border-live/50 bg-red-950/40 shadow-sm shadow-live/30' },
+  idle: { label: 'IDLE', badgeClass: 'bg-amber-700 text-amber-200', cardClass: 'border-amber-700/40 bg-amber-950/20' },
+  stopped: { label: 'STOPPED', badgeClass: 'bg-red-900 text-red-300', cardClass: 'border-red-900/40 bg-red-950/20' },
 }
-
-// Merged recorder type (API data + realtime updates)
-interface MergedRecorder {
-  recNum: number
-  srcNum: number
-  recType: string
-  state: number
-  stateName: string
-  freq: number
-  tgid?: number
-  tgAlphaTag?: string
-  tgColor?: string  // hex color from color rules
-  unitId?: number
-  unitAlphaTag?: string
-  count: number
-  duration: number
-  recordingStartTime?: number  // timestamp when recording started
-  lastCallDuration?: number    // duration of last call in seconds
-}
+const DEFAULT_STATE = { label: 'UNKNOWN', badgeClass: 'bg-zinc-700 text-zinc-400', cardClass: 'border-zinc-700/30 bg-zinc-900/20' }
 
 // Elapsed time display component
 function RecorderElapsed({ startTime }: { startTime: number }) {
@@ -73,13 +49,9 @@ function RecorderElapsed({ startTime }: { startTime: number }) {
   return <span className="font-mono tabular-nums">{formatDuration(elapsed)}</span>
 }
 
-// Store for preserving last known TG/unit context when recorder goes idle
-const lastContextMap = new Map<number, { tgid?: number; tgAlphaTag?: string; unitId?: number; unitAlphaTag?: string }>()
-
-// Store for tracking when recorders started recording (for elapsed time)
-const recordingStartMap = new Map<number, number>()
-// Store for last call duration when recording ends
-const lastCallDurationMap = new Map<number, number>()
+// Track recording start times for elapsed display
+const recordingStartMap = new Map<string, number>()
+const lastCallDurationMap = new Map<string, number>()
 
 export default function Dashboard() {
   const realtimeRecorders = useRealtimeStore((s) => s.recorders)
@@ -87,8 +59,8 @@ export default function Dashboard() {
   const connectionStatus = useRealtimeStore((s) => s.connectionStatus)
 
   const [stats, setStats] = useState<StatsResponse | null>(null)
-  const [recentCalls, setRecentCalls] = useState<RecentCallInfo[]>([])
-  const [apiRecorders, setApiRecorders] = useState<RecorderInfo[]>([])
+  const [recentCalls, setRecentCalls] = useState<Call[]>([])
+  const [apiRecorders, setApiRecorders] = useState<Recorder[]>([])
   const [loading, setLoading] = useState(true)
 
   // Filter state for recent calls
@@ -102,7 +74,7 @@ export default function Dashboard() {
   const isHoveringRef = useRef(false)
 
   const TARGET_CALLS = 24
-  const FILTERED_POOL = 500 // Fetch more when filtering to find enough matches
+  const FILTERED_POOL = 500
 
   const fetchTranscription = useTranscriptionCache((s) => s.fetchTranscription)
   const getEntry = useTranscriptionCache((s) => s.getEntry)
@@ -110,29 +82,41 @@ export default function Dashboard() {
   const currentCall = useAudioStore((s) => s.currentCall)
   const isPlaying = useAudioStore(selectIsPlaying)
   const getCachedColor = useTalkgroupColors((s) => s.getCachedColor)
-  const talkgroupCache = useTalkgroupCache((s) => s.cache)
   const isFavorite = useFilterStore((s) => s.isFavorite)
   const isMonitored = useMonitorStore((s) => s.isMonitored)
 
-  const fetchTranscriptionsForCalls = useCallback((calls: RecentCallInfo[]) => {
+  const fetchTranscriptionsForCalls = useCallback((calls: Call[]) => {
     for (const call of calls) {
-      if (call.call_id) {
+      if (call.call_id && call.has_transcription) {
         fetchTranscription(call.call_id)
       }
     }
   }, [fetchTranscription])
 
-  // Check if any filter is active
   const hasActiveFilter = filterFavorites || filterMonitored || filterTranscribed || filterEmergency || filterLong
+
+  // Dedup calls by call_id
+  const dedupCalls = useCallback((calls: Call[]) => {
+    const seen = new Set<number>()
+    return calls.filter(c => {
+      if (seen.has(c.call_id)) return false
+      seen.add(c.call_id)
+      return true
+    })
+  }, [])
 
   // Fetch initial data
   useEffect(() => {
-    Promise.all([getStats(), getRecentCalls(TARGET_CALLS), getRecorders()])
-      .then(([statsRes, recentRes, recordersRes]) => {
+    Promise.all([
+      getStats(),
+      getCalls({ sort: '-stop_time', deduplicate: true, limit: TARGET_CALLS }),
+      getRecorders(),
+    ])
+      .then(([statsRes, callsRes, recordersRes]) => {
         setStats(statsRes)
-        setRecentCalls(dedupCalls(recentRes.calls))
+        setRecentCalls(dedupCalls(callsRes.calls || []))
         setApiRecorders(recordersRes.recorders || [])
-        fetchTranscriptionsForCalls(recentRes.calls)
+        fetchTranscriptionsForCalls(callsRes.calls || [])
       })
       .catch(console.error)
       .finally(() => setLoading(false))
@@ -143,10 +127,10 @@ export default function Dashboard() {
   useEffect(() => {
     if (loading || !hasActiveFilter) return
 
-    getRecentCalls(FILTERED_POOL)
+    getCalls({ sort: '-stop_time', deduplicate: true, limit: FILTERED_POOL })
       .then((res) => {
-        setRecentCalls(dedupCalls(res.calls))
-        fetchTranscriptionsForCalls(res.calls)
+        setRecentCalls(dedupCalls(res.calls || []))
+        fetchTranscriptionsForCalls(res.calls || [])
       })
       .catch(console.error)
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -160,33 +144,17 @@ export default function Dashboard() {
     return () => clearInterval(interval)
   }, [])
 
-  // Helper to get consistent string key for a call
-  const getCallKey = useCallback((c: RecentCallInfo) => c.call_id ?? '', [])
-
-  // Dedup calls by call_id (backend may return same call from multiple sites)
-  const dedupCalls = useCallback((calls: RecentCallInfo[]) => {
-    const seen = new Set<string>()
-    return calls.filter(c => {
-      const key = getCallKey(c)
-      if (!key || seen.has(key)) return false
-      seen.add(key)
-      return true
-    })
-  }, [getCallKey])
-
-  // Refresh recent calls periodically - just fetch new ones and merge
-  // Skip refresh when user is hovering over the calls section
+  // Refresh recent calls periodically
   useEffect(() => {
     const interval = setInterval(() => {
-      if (isHoveringRef.current) return // Skip refresh while hovering
-      getRecentCalls(TARGET_CALLS)
+      if (isHoveringRef.current) return
+      getCalls({ sort: '-stop_time', deduplicate: true, limit: TARGET_CALLS })
         .then((res) => {
-          const newCalls = res.calls
+          const newCalls = res.calls || []
           setRecentCalls((prev) => {
-            // Dedup new batch, then merge with existing (new wins)
             const deduped = dedupCalls(newCalls)
-            const newIds = new Set(deduped.map(getCallKey))
-            const kept = prev.filter(c => !newIds.has(getCallKey(c)))
+            const newIds = new Set(deduped.map(c => c.call_id))
+            const kept = prev.filter(c => !newIds.has(c.call_id))
             return [...deduped, ...kept].slice(0, FILTERED_POOL)
           })
           fetchTranscriptionsForCalls(newCalls)
@@ -194,9 +162,9 @@ export default function Dashboard() {
         .catch(console.error)
     }, REFRESH_INTERVALS.RECENT_CALLS)
     return () => clearInterval(interval)
-  }, [fetchTranscriptionsForCalls, getCallKey, dedupCalls])
+  }, [fetchTranscriptionsForCalls, dedupCalls])
 
-  // Refresh recorders periodically (to get updated counts)
+  // Refresh recorders periodically
   useEffect(() => {
     const interval = setInterval(() => {
       getRecorders().then((res) => {
@@ -207,140 +175,65 @@ export default function Dashboard() {
   }, [])
 
   // Merge API recorders with realtime updates
-  const mergedRecorders = useMemo((): MergedRecorder[] => {
-    // Filter to recorders with activity (count > 0)
-    const activeRecorders = apiRecorders.filter((r) => (r.count ?? 0) > 0)
+  const mergedRecorders = useMemo(() => {
+    // Build map from realtime recorders by id
+    const realtimeMap = new Map<string, Recorder>()
+    for (const r of realtimeRecorders) {
+      realtimeMap.set(r.id, r)
+    }
+
+    // Start with API recorders, overlay realtime data
+    const activeRecorders = apiRecorders.filter(r => (r.count ?? 0) > 0)
 
     return activeRecorders
-      .map((apiRec): MergedRecorder => {
-        const recNum = apiRec.rec_num ?? 0
+      .map((apiRec) => {
+        const realtime = realtimeMap.get(apiRec.id)
+        const merged: Recorder = { ...apiRec, ...realtime, id: apiRec.id }
 
-        // Check for realtime update (keyed by system:recNum, but we may not know system)
-        const realtimeKey = Array.from(realtimeRecorders.keys()).find(
-          (k) => k.endsWith(`:${recNum}`)
-        )
-        const realtime = realtimeKey ? realtimeRecorders.get(realtimeKey) : undefined
-
-        // Get current TG/unit from realtime or API
-        const currentTgid = realtime?.talkgroup ?? apiRec.tgid
-        const currentTgAlphaTag = realtime?.tgAlphaTag ?? apiRec.tg_alpha_tag
-        const currentUnitId = apiRec.unit_id
-        const currentUnitAlphaTag = apiRec.unit_alpha_tag
-
-        // Preserve context: if we have TG/unit data, save it; otherwise use last known
-        if (currentTgid || currentTgAlphaTag || currentUnitId || currentUnitAlphaTag) {
-          lastContextMap.set(recNum, {
-            tgid: currentTgid,
-            tgAlphaTag: currentTgAlphaTag,
-            unitId: currentUnitId,
-            unitAlphaTag: currentUnitAlphaTag,
-          })
-        }
-        const lastContext = lastContextMap.get(recNum)
-
-        const currentState = realtime?.state ?? apiRec.state ?? 7
-        const isRecording = currentState === 1
-
-        // Track recording start time and save duration when recording ends
-        if (isRecording && !recordingStartMap.has(recNum)) {
-          recordingStartMap.set(recNum, Date.now())
-        } else if (!isRecording && recordingStartMap.has(recNum)) {
-          // Recording just ended - save the duration
-          const startTime = recordingStartMap.get(recNum)!
-          const callDuration = Math.floor((Date.now() - startTime) / 1000)
-          lastCallDurationMap.set(recNum, callDuration)
-          recordingStartMap.delete(recNum)
+        // Track recording start/end for elapsed time
+        const isRecording = merged.rec_state === 'recording'
+        if (isRecording && !recordingStartMap.has(merged.id)) {
+          recordingStartMap.set(merged.id, Date.now())
+        } else if (!isRecording && recordingStartMap.has(merged.id)) {
+          const startTime = recordingStartMap.get(merged.id)!
+          lastCallDurationMap.set(merged.id, Math.floor((Date.now() - startTime) / 1000))
+          recordingStartMap.delete(merged.id)
         }
 
-        const finalTgAlphaTag = currentTgAlphaTag ?? lastContext?.tgAlphaTag
-        const finalTgid = currentTgid ?? lastContext?.tgid
-
-        // Look up full talkgroup info from cache for color matching
-        const cachedTg = finalTgid ? talkgroupCache.get(talkgroupKey('348', finalTgid)) : undefined
-
-        // Get cached hex color for talkgroup (computed once and cached in store)
-        const tgColor = finalTgid
-          ? getCachedColor('348', finalTgid, {
-              alpha_tag: cachedTg?.alphaTag ?? finalTgAlphaTag,
-              description: cachedTg?.description,
-              group: cachedTg?.group,
-              tag: cachedTg?.tag,
-              tgid: finalTgid,
-              sysid: '348',
-            })
-          : null
-
-        return {
-          recNum,
-          srcNum: apiRec.src_num ?? 0,
-          recType: apiRec.rec_type ?? 'P25',
-          state: currentState,
-          stateName: realtime?.stateName ?? apiRec.rec_state_type ?? 'AVAILABLE',
-          freq: realtime?.freq ?? apiRec.freq ?? 0,
-          tgid: finalTgid,
-          tgAlphaTag: finalTgAlphaTag,
-          tgColor: tgColor ?? undefined,
-          unitId: currentUnitId ?? lastContext?.unitId,
-          unitAlphaTag: currentUnitAlphaTag ?? lastContext?.unitAlphaTag,
-          count: apiRec.count ?? 0,
-          duration: apiRec.duration ?? 0,
-          recordingStartTime: recordingStartMap.get(recNum),
-          lastCallDuration: lastCallDurationMap.get(recNum),
-        }
+        return merged
       })
-      .sort((a, b) => a.recNum - b.recNum)
-  }, [apiRecorders, realtimeRecorders, getCachedColor, talkgroupCache])
+      .sort((a, b) => (a.rec_num ?? 0) - (b.rec_num ?? 0))
+  }, [apiRecorders, realtimeRecorders])
 
   const systemsArray = Array.from(decodeRates.values())
   const avgDecodeRate = systemsArray.length > 0
-    ? systemsArray.reduce((acc, s) => acc + s.decodeRate, 0) / systemsArray.length
+    ? systemsArray.reduce((acc, s) => acc + s.decode_rate, 0) / systemsArray.length
     : 0
 
-  const recordingCount = mergedRecorders.filter((r) => r.state === 1).length
-  const usedCount = mergedRecorders.length  // recorders with count > 0
-  const totalCount = apiRecorders.length    // all recorders
+  const recordingCount = mergedRecorders.filter(r => r.rec_state === 'recording').length
+  const usedCount = mergedRecorders.length
+  const totalCount = apiRecorders.length
 
-  // Filter recent calls based on active filters, limit to target count
+  // Filter recent calls based on active filters
   const filteredCalls = useMemo(() => {
     if (!hasActiveFilter) return recentCalls.slice(0, TARGET_CALLS)
 
     return recentCalls.filter((call) => {
-      const sysid = call.sysid || '348'
-
-      if (filterFavorites && !isFavorite(sysid, call.tgid)) return false
-      if (filterMonitored && !isMonitored(sysid, call.tgid)) return false
+      if (filterFavorites && !isFavorite(call.system_id, call.tgid)) return false
+      if (filterMonitored && !isMonitored(call.system_id, call.tgid)) return false
       if (filterTranscribed) {
-        const entry = call.call_id ? getEntry(call.call_id) : null
-        if (!entry || entry.status !== 'loaded' || !entry.text) return false
+        if (!call.has_transcription && !call.transcription_text) return false
       }
       if (filterEmergency && !call.emergency) return false
-      if (filterLong && call.duration < 30) return false
+      if (filterLong && (call.duration ?? 0) < 30) return false
 
       return true
     }).slice(0, TARGET_CALLS)
-  }, [recentCalls, hasActiveFilter, filterFavorites, filterMonitored, filterTranscribed, filterEmergency, filterLong, isFavorite, isMonitored, getEntry])
+  }, [recentCalls, hasActiveFilter, filterFavorites, filterMonitored, filterTranscribed, filterEmergency, filterLong, isFavorite, isMonitored])
 
-  const handlePlayCall = (call: RecentCallInfo) => {
-    const hasAudio = call.has_audio || !!call.audio_path
-    if (!hasAudio || !call.call_id) return
-
-    loadCall({
-      call_id: call.call_id,
-      system: call.system,
-      sysid: call.sysid,
-      tgid: call.tgid,
-      tg_alpha_tag: call.tg_alpha_tag,
-      duration: call.duration,
-      start_time: call.start_time,
-      stop_time: call.stop_time || '',
-      call_num: call.call_num,
-      freq: call.freq,
-      encrypted: call.encrypted,
-      emergency: call.emergency,
-      has_audio: hasAudio,
-      audio_path: call.audio_path,
-      units: call.units || [],
-    })
+  const handlePlayCall = (call: Call) => {
+    if (!call.audio_url) return
+    loadCall(call)
   }
 
   return (
@@ -359,10 +252,10 @@ export default function Dashboard() {
         <div className="flex items-center gap-2">
           <span className="text-sm text-muted-foreground">24h</span>
           <span className="text-xl font-bold tabular-nums">
-            {stats?.calls_last_24h?.toLocaleString() ?? '—'}
+            {stats?.calls_24h?.toLocaleString() ?? '—'}
           </span>
           <span className="text-xs text-muted-foreground">
-            ({stats?.calls_last_hour?.toLocaleString() ?? '—'}/1h)
+            ({stats?.calls_1h?.toLocaleString() ?? '—'}/1h)
           </span>
         </div>
         <div className="h-6 w-px bg-border hidden sm:block" />
@@ -381,21 +274,22 @@ export default function Dashboard() {
           <span className="text-sm text-muted-foreground">Decode</span>
           <span className={cn(
             "text-xl font-bold tabular-nums",
-            avgDecodeRate >= 90 ? 'text-success' : avgDecodeRate >= 70 ? 'text-warning' : avgDecodeRate > 0 ? 'text-destructive' : ''
+            avgDecodeRate >= 0.9 ? 'text-success' : avgDecodeRate >= 0.7 ? 'text-warning' : avgDecodeRate > 0 ? 'text-destructive' : ''
           )}>
             {avgDecodeRate > 0 ? formatDecodeRate(avgDecodeRate) : '—'}
           </span>
         </div>
-        <div className="hidden lg:flex ml-auto items-center gap-2">
-          <span className="text-sm text-muted-foreground">Storage</span>
-          <span className="font-medium">{stats?.audio_bytes ? formatBytes(stats.audio_bytes) : '—'}</span>
-          <span className="text-xs text-muted-foreground">
-            ({stats?.audio_files?.toLocaleString() ?? '—'} files)
-          </span>
-        </div>
+        {stats?.total_duration_hours != null && (
+          <>
+            <div className="hidden lg:flex ml-auto items-center gap-2">
+              <span className="text-sm text-muted-foreground">Audio</span>
+              <span className="font-medium">{stats.total_duration_hours.toFixed(0)}h</span>
+            </div>
+          </>
+        )}
       </div>
 
-      {/* Recorders grid - stable positions */}
+      {/* Recorders grid */}
       {mergedRecorders.length > 0 && (
         <div>
           <div className="mb-2 flex items-center gap-2">
@@ -409,11 +303,21 @@ export default function Dashboard() {
             style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}
           >
             {mergedRecorders.map((rec) => {
-              const stateInfo = RECORDER_STATES[rec.state] || RECORDER_STATES[7]
+              const stateInfo = RECORDER_STATES[rec.rec_state ?? 'available'] || DEFAULT_STATE
+              const recStartTime = recordingStartMap.get(rec.id)
+              const lastDuration = lastCallDurationMap.get(rec.id)
+
+              // Get color for talkgroup
+              const tgColor = rec.tgid
+                ? getCachedColor(0, rec.tgid, {
+                    alpha_tag: rec.tg_alpha_tag ?? undefined,
+                    tgid: rec.tgid,
+                  })
+                : null
 
               return (
                 <div
-                  key={rec.recNum}
+                  key={rec.id}
                   className={cn(
                     "rounded-lg border p-2.5 transition-all min-h-[100px] flex flex-col",
                     stateInfo.cardClass
@@ -422,7 +326,7 @@ export default function Dashboard() {
                   {/* Header: recorder info + state badge */}
                   <div className="flex items-start justify-between gap-1">
                     <span className="text-[10px] font-mono text-muted-foreground">
-                      SRC {rec.srcNum} / REC {rec.recNum}
+                      SRC {rec.src_num ?? 0} / REC {rec.rec_num ?? 0}
                     </span>
                     <Badge className={cn("text-[10px] px-1.5 py-0 h-5 font-bold shrink-0", stateInfo.badgeClass)}>
                       {stateInfo.label}
@@ -432,49 +336,48 @@ export default function Dashboard() {
                   {/* Frequency + recording time */}
                   <div className="flex items-center justify-between text-xs font-mono">
                     <span className="text-muted-foreground">
-                      {formatFrequency(rec.freq)}
+                      {rec.freq ? formatFrequency(rec.freq) : '—'}
                     </span>
-                    {rec.recordingStartTime && (
+                    {recStartTime && (
                       <span className="text-live font-medium">
-                        <RecorderElapsed startTime={rec.recordingStartTime} />
+                        <RecorderElapsed startTime={recStartTime} />
                       </span>
                     )}
                   </div>
 
-                  {/* TG/Unit context - always show */}
+                  {/* TG/Unit context */}
                   <div className="border-t border-border/30 pt-1 mt-0.5 space-y-0.5 flex-1">
                     <div className="flex items-center gap-1.5">
-                      {(rec.tgid || rec.tgAlphaTag) ? (
-                        <Link
-                          to={`/talkgroups/348:${rec.tgid}`}
-                          className={cn("truncate text-sm hover:underline", !rec.tgColor && "text-sky-400")}
-                          style={rec.tgColor ? { color: rec.tgColor } : undefined}
-                          title={rec.tgAlphaTag || `TG ${rec.tgid}`}
+                      {rec.tgid ? (
+                        <span
+                          className={cn("truncate text-sm", !tgColor && "text-sky-400")}
+                          style={tgColor ? { color: tgColor } : undefined}
+                          title={rec.tg_alpha_tag || `TG ${rec.tgid}`}
                         >
-                          {rec.tgAlphaTag || `TG ${rec.tgid}`}
-                        </Link>
+                          {rec.tg_alpha_tag || `TG ${rec.tgid}`}
+                        </span>
                       ) : (
                         <span className="text-sm text-muted-foreground/50">—</span>
                       )}
-                      {!rec.recordingStartTime && rec.lastCallDuration !== undefined && (
+                      {!recStartTime && lastDuration !== undefined && (
                         <span className="text-[11px] font-mono text-muted-foreground shrink-0">
-                          {formatDuration(rec.lastCallDuration)}
+                          {formatDuration(lastDuration)}
                         </span>
                       )}
                     </div>
-                    <div className="truncate text-sm text-amber-400" title={rec.unitAlphaTag || (rec.unitId ? `Unit ${rec.unitId}` : '')}>
-                      {rec.unitAlphaTag || (rec.unitId ? `Unit ${rec.unitId}` : <span className="text-muted-foreground/50">—</span>)}
+                    <div className="truncate text-sm text-amber-400" title={rec.unit_alpha_tag || (rec.unit_id ? `Unit ${rec.unit_id}` : '')}>
+                      {rec.unit_alpha_tag || (rec.unit_id ? `Unit ${rec.unit_id}` : <span className="text-muted-foreground/50">—</span>)}
                     </div>
                   </div>
 
-                  {/* Footer: Stats + type */}
+                  {/* Footer */}
                   <div className="flex items-center justify-between mt-1 pt-1 border-t border-border/20">
                     <span className="text-[10px] font-mono text-muted-foreground/70">
-                      {rec.count} calls
-                      {rec.duration > 0 && ` • ${(rec.duration / 60).toFixed(1)}m`}
+                      {rec.count ?? 0} calls
+                      {(rec.duration ?? 0) > 0 && ` • ${((rec.duration ?? 0) / 60).toFixed(1)}m`}
                     </span>
                     <span className="text-[10px] text-muted-foreground/50 uppercase">
-                      {rec.recType}
+                      {rec.type ?? 'P25'}
                     </span>
                   </div>
                 </div>
@@ -487,15 +390,14 @@ export default function Dashboard() {
       {/* System status - compact inline */}
       {systemsArray.length > 0 && (
         <div className="flex flex-wrap gap-2">
-          {systemsArray.map((system) => (
+          {systemsArray.map((rate) => (
             <div
-              key={system.system}
+              key={rate.system_id}
               className="flex items-center gap-3 rounded-lg border bg-card px-3 py-2"
             >
               <div>
-                <div className="font-medium capitalize text-sm">{system.system}</div>
-                <div className="text-xs text-muted-foreground font-mono">
-                  {(system.controlChannel / 1000000).toFixed(4)} MHz
+                <div className="font-medium capitalize text-sm">
+                  {rate.system_name || `System ${rate.system_id}`}
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -503,16 +405,16 @@ export default function Dashboard() {
                   <div
                     className={cn(
                       "h-full transition-all",
-                      system.decodeRate >= 90 ? 'bg-success' : system.decodeRate >= 70 ? 'bg-warning' : 'bg-destructive'
+                      rate.decode_rate >= 0.9 ? 'bg-success' : rate.decode_rate >= 0.7 ? 'bg-warning' : 'bg-destructive'
                     )}
-                    style={{ width: `${system.decodeRate}%` }}
+                    style={{ width: `${rate.decode_rate * 100}%` }}
                   />
                 </div>
                 <span className={cn(
                   "text-sm font-bold tabular-nums w-12",
-                  system.decodeRate >= 90 ? 'text-success' : system.decodeRate >= 70 ? 'text-warning' : 'text-destructive'
+                  rate.decode_rate >= 0.9 ? 'text-success' : rate.decode_rate >= 0.7 ? 'text-warning' : 'text-destructive'
                 )}>
-                  {formatDecodeRate(system.decodeRate)}
+                  {formatDecodeRate(rate.decode_rate)}
                 </span>
               </div>
             </div>
@@ -520,7 +422,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Recent calls - dense grid */}
+      {/* Recent calls */}
       <div>
         <div className="mb-2 flex flex-wrap items-center gap-2">
           <h2 className="text-sm font-medium text-muted-foreground">RECENT CALLS</h2>
@@ -607,26 +509,22 @@ export default function Dashboard() {
             onMouseLeave={() => { isHoveringRef.current = false }}
           >
             {filteredCalls.map((call) => {
-              const callId = call.call_id ?? ''
-              const isCurrentlyPlaying = currentCall?.callId === callId
-              const hasAudio = call.has_audio || !!call.audio_path
+              const isCurrentlyPlaying = currentCall?.callId === call.call_id
+              const hasAudio = !!call.audio_url
 
-              // Get cached talkgroup info for color matching
-              const sysid = call.sysid || '348'
-              const cachedTg = call.tgid ? talkgroupCache.get(talkgroupKey(sysid, call.tgid)) : undefined
               const tgColor = call.tgid
-                ? getCachedColor(sysid, call.tgid, {
-                    alpha_tag: cachedTg?.alphaTag ?? call.tg_alpha_tag,
-                    description: cachedTg?.description,
-                    group: cachedTg?.group,
-                    tag: cachedTg?.tag,
+                ? getCachedColor(call.system_id, call.tgid, {
+                    alpha_tag: call.tg_alpha_tag,
+                    description: call.tg_description,
+                    group: call.tg_group,
+                    tag: call.tg_tag,
                     tgid: call.tgid,
-                    sysid,
+                    system_id: call.system_id,
                   })
                 : null
 
               return (
-                <HoverCard key={callId} openDelay={300} closeDelay={100}>
+                <HoverCard key={call.call_id} openDelay={300} closeDelay={100}>
                   <HoverCardTrigger asChild>
                     <Card
                       className={cn(
@@ -657,7 +555,7 @@ export default function Dashboard() {
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-1.5">
                               <Link
-                                to={`/talkgroups/${sysid}:${call.tgid}`}
+                                to={`/talkgroups/${call.system_id}:${call.tgid}`}
                                 className={cn("truncate font-medium text-sm hover:underline", !tgColor && "text-sky-400")}
                                 style={tgColor ? { color: tgColor } : undefined}
                               >
@@ -670,217 +568,200 @@ export default function Dashboard() {
                                 <Badge variant="secondary" className="text-[10px] px-1 py-0">ENC</Badge>
                               )}
                               <span className="text-xs text-muted-foreground">
-                                {formatDuration(call.duration)} • {formatRelativeTime(call.start_time)}
+                                {formatDuration(call.duration ?? 0)} • {formatRelativeTime(call.start_time)}
                               </span>
                             </div>
-                            <Link to={`/calls/${callId}`} className="block hover:opacity-80">
-                              <TranscriptionPreview callId={callId} maxLines={2} units={call.units} showUnits />
-                            </Link>
+                            {call.transcription_text ? (
+                              <Link to={`/calls/${call.call_id}`} className="block hover:opacity-80">
+                                <p className="text-sm text-muted-foreground italic" style={{
+                                  display: '-webkit-box',
+                                  WebkitLineClamp: 2,
+                                  WebkitBoxOrient: 'vertical' as const,
+                                  overflow: 'hidden',
+                                }}>
+                                  {call.transcription_text}
+                                </p>
+                              </Link>
+                            ) : (
+                              <Link to={`/calls/${call.call_id}`} className="block hover:opacity-80">
+                                <TranscriptionPreview callId={call.call_id} maxLines={2} />
+                              </Link>
+                            )}
                           </div>
                         </div>
                       </CardContent>
                     </Card>
                   </HoverCardTrigger>
                   <HoverCardContent side="top" className="w-96 bg-zinc-900 border-zinc-700 shadow-xl">
-                    <div className="space-y-3">
-                      {/* Talkgroup header */}
-                      <div>
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <span
-                              className={cn("font-medium", !tgColor && "text-sky-400")}
-                              style={tgColor ? { color: tgColor } : undefined}
-                            >
-                              {getTalkgroupDisplayName(call.tgid, call.tg_alpha_tag)}
-                            </span>
-                            {cachedTg?.tag && (
-                              <span className="text-xs text-muted-foreground">{cachedTg.tag}</span>
-                            )}
-                          </div>
-                          <div className="flex gap-1">
-                            {call.emergency && <Badge variant="destructive">EMERGENCY</Badge>}
-                            {call.encrypted && <Badge variant="secondary">ENCRYPTED</Badge>}
-                          </div>
-                        </div>
-                        {/* Talkgroup details */}
-                        {cachedTg && (cachedTg.description || cachedTg.group) && (
-                          <div className="mt-1 text-xs text-muted-foreground">
-                            {cachedTg.description && <p>{cachedTg.description}</p>}
-                            {cachedTg.group && <p>{cachedTg.group}</p>}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Call details grid */}
-                      <div className="grid grid-cols-2 gap-2 text-sm">
-                        <div>
-                          <p className="text-muted-foreground text-xs">Time</p>
-                          <p className="font-mono">{formatTime(call.start_time)}</p>
-                        </div>
-                        <div>
-                          <p className="text-muted-foreground text-xs">Duration</p>
-                          <p className="font-mono">{formatDuration(call.duration)}</p>
-                        </div>
-                        <div>
-                          <p className="text-muted-foreground text-xs">Frequency</p>
-                          <p className="font-mono">{formatFrequency(call.freq)}</p>
-                        </div>
-                        <div>
-                          <p className="text-muted-foreground text-xs">System</p>
-                          <p>{call.system || sysid}</p>
-                        </div>
-                      </div>
-
-                      {/* Units */}
-                      {call.units && call.units.length > 0 && (
-                        <div>
-                          <p className="text-muted-foreground text-xs mb-1">Units ({call.units.length})</p>
-                          <div className="flex flex-wrap gap-1">
-                            {call.units.slice(0, 8).map((unit, i) => (
-                              <Badge key={i} variant="outline" className="text-xs">
-                                {unit.unit_tag || unit.unit_id}
-                              </Badge>
-                            ))}
-                            {call.units.length > 8 && (
-                              <Badge variant="outline" className="text-xs">
-                                +{call.units.length - 8} more
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Full transcription with speaker attribution */}
-                      {(() => {
-                        const transcriptionEntry = getEntry(callId)
-                        if (!transcriptionEntry?.status || transcriptionEntry.status !== 'loaded' || !transcriptionEntry.text) {
-                          return null
-                        }
-
-                        const { words, transmissions } = transcriptionEntry
-
-                        // If we have word-level data and transmissions, show speaker-attributed format
-                        if (words && words.length > 0 && transmissions && transmissions.length > 0) {
-                          // Build transmission ranges
-                          const ranges = transmissions
-                            .map(tx => {
-                              const start = (tx.position != null && tx.position >= 0) ? tx.position : 0
-                              const duration = (tx.duration != null && tx.duration > 0) ? tx.duration : 0
-                              return { start, end: start + duration, unit_rid: tx.unit_rid }
-                            })
-                            .sort((a, b) => a.start - b.start)
-
-                          // Get unique unit RIDs in order of appearance
-                          const uniqueUnitRids: number[] = []
-                          const seenUnits = new Set<number>()
-                          for (const tx of [...transmissions].sort((a, b) => {
-                            const posA = (a.position != null && a.position >= 0) ? a.position : 0
-                            const posB = (b.position != null && b.position >= 0) ? b.position : 0
-                            return posA - posB
-                          })) {
-                            if (!seenUnits.has(tx.unit_rid)) {
-                              seenUnits.add(tx.unit_rid)
-                              uniqueUnitRids.push(tx.unit_rid)
-                            }
-                          }
-
-                          // Find speaker for a word
-                          const findSpeaker = (wordStart: number, wordEnd: number): number | null => {
-                            let bestMatch: { unit_rid: number; overlap: number } | null = null
-                            for (const range of ranges) {
-                              const overlapStart = Math.max(wordStart, range.start)
-                              const overlapEnd = Math.min(wordEnd, range.end)
-                              const overlap = Math.max(0, overlapEnd - overlapStart)
-                              if (overlap > 0 && (bestMatch === null || overlap > bestMatch.overlap)) {
-                                bestMatch = { unit_rid: range.unit_rid, overlap }
-                              }
-                            }
-                            return bestMatch?.unit_rid ?? null
-                          }
-
-                          // Build unit tag lookup
-                          const unitTagMap = new Map<number, string>()
-                          for (const u of call.units || []) {
-                            unitTagMap.set(u.unit_id, u.unit_tag || `Unit ${u.unit_id}`)
-                          }
-
-                          // Group consecutive words by speaker
-                          interface SpeakerSegment {
-                            unitRid: number | null
-                            words: string[]
-                          }
-                          const segments: SpeakerSegment[] = []
-                          let currentSegment: SpeakerSegment | null = null
-
-                          for (const w of words) {
-                            const speaker = findSpeaker(w.start, w.end)
-                            if (!currentSegment || currentSegment.unitRid !== speaker) {
-                              currentSegment = { unitRid: speaker, words: [] }
-                              segments.push(currentSegment)
-                            }
-                            currentSegment.words.push(w.word)
-                          }
-
-                          return (
-                            <div>
-                              <p className="text-muted-foreground text-xs mb-1">Transcription</p>
-                              <div className="text-sm max-h-40 overflow-y-auto space-y-1">
-                                {segments.map((seg, i) => {
-                                  const unitColor = seg.unitRid !== null
-                                    ? getUnitColorByRid(seg.unitRid, uniqueUnitRids)
-                                    : null
-                                  const unitName = seg.unitRid !== null
-                                    ? unitTagMap.get(seg.unitRid) || `Unit ${seg.unitRid}`
-                                    : 'Unknown'
-                                  return (
-                                    <p key={i}>
-                                      <span className={cn("font-medium", unitColor?.text)}>
-                                        {unitName}:
-                                      </span>{' '}
-                                      <span className="italic text-muted-foreground">
-                                        {seg.words.join(' ')}
-                                      </span>
-                                    </p>
-                                  )
-                                })}
-                              </div>
-                            </div>
-                          )
-                        }
-
-                        // Fallback to plain text
-                        return (
-                          <div>
-                            <p className="text-muted-foreground text-xs mb-1">Transcription</p>
-                            <p className="text-sm italic max-h-32 overflow-y-auto">
-                              {transcriptionEntry.text}
-                            </p>
-                          </div>
-                        )
-                      })()}
-
-                      {/* Links */}
-                      <div className="pt-2 border-t flex gap-2">
-                        <Link
-                          to={`/calls/${callId}`}
-                          className="text-xs text-primary hover:underline"
-                        >
-                          View call details →
-                        </Link>
-                        <Link
-                          to={`/talkgroups/${sysid}:${call.tgid}`}
-                          className="text-xs text-primary hover:underline"
-                        >
-                          View talkgroup →
-                        </Link>
-                      </div>
-                    </div>
+                    <DashboardHoverContent call={call} tgColor={tgColor} getEntry={getEntry} />
                   </HoverCardContent>
                 </HoverCard>
               )
             })}
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+// Hover card content extracted to keep main component cleaner
+function DashboardHoverContent({
+  call,
+  tgColor,
+  getEntry,
+}: {
+  call: Call
+  tgColor: string | null
+  getEntry: (callId: number) => { status: string; transcription?: { text: string; words?: { words?: { word: string; start: number; end: number; src: number; src_tag?: string }[] } } } | undefined
+}) {
+  const entry = getEntry(call.call_id)
+
+  return (
+    <div className="space-y-3">
+      {/* Talkgroup header */}
+      <div>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span
+              className={cn("font-medium", !tgColor && "text-sky-400")}
+              style={tgColor ? { color: tgColor } : undefined}
+            >
+              {getTalkgroupDisplayName(call.tgid, call.tg_alpha_tag)}
+            </span>
+            {call.tg_tag && (
+              <span className="text-xs text-muted-foreground">{call.tg_tag}</span>
+            )}
+          </div>
+          <div className="flex gap-1">
+            {call.emergency && <Badge variant="destructive">EMERGENCY</Badge>}
+            {call.encrypted && <Badge variant="secondary">ENCRYPTED</Badge>}
+          </div>
+        </div>
+        {(call.tg_description || call.tg_group) && (
+          <div className="mt-1 text-xs text-muted-foreground">
+            {call.tg_description && <p>{call.tg_description}</p>}
+            {call.tg_group && <p>{call.tg_group}</p>}
+          </div>
+        )}
+      </div>
+
+      {/* Call details grid */}
+      <div className="grid grid-cols-2 gap-2 text-sm">
+        <div>
+          <p className="text-muted-foreground text-xs">Time</p>
+          <p className="font-mono">{formatTime(call.start_time)}</p>
+        </div>
+        <div>
+          <p className="text-muted-foreground text-xs">Duration</p>
+          <p className="font-mono">{formatDuration(call.duration ?? 0)}</p>
+        </div>
+        <div>
+          <p className="text-muted-foreground text-xs">Frequency</p>
+          <p className="font-mono">{call.freq ? formatFrequency(call.freq) : '—'}</p>
+        </div>
+        <div>
+          <p className="text-muted-foreground text-xs">System</p>
+          <p>{call.system_name || `System ${call.system_id}`}</p>
+        </div>
+      </div>
+
+      {/* Units */}
+      {call.units && call.units.length > 0 && (
+        <div>
+          <p className="text-muted-foreground text-xs mb-1">Units ({call.units.length})</p>
+          <div className="flex flex-wrap gap-1">
+            {call.units.slice(0, 8).map((unit, i) => (
+              <Badge key={i} variant="outline" className="text-xs">
+                {unit.alpha_tag || `Unit ${unit.unit_id}`}
+              </Badge>
+            ))}
+            {call.units.length > 8 && (
+              <Badge variant="outline" className="text-xs">
+                +{call.units.length - 8} more
+              </Badge>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Transcription */}
+      {(() => {
+        // Show inline text first, fallback to cache
+        const text = call.transcription_text || (entry?.status === 'loaded' ? entry.transcription?.text : null)
+        if (!text) return null
+
+        // If we have attributed words, show speaker-segmented format
+        const words = entry?.transcription?.words?.words
+        if (words && words.length > 0) {
+          // Get unique unit src IDs
+          const uniqueUnits: number[] = []
+          const seen = new Set<number>()
+          for (const w of words) {
+            if (w.src && !seen.has(w.src)) {
+              seen.add(w.src)
+              uniqueUnits.push(w.src)
+            }
+          }
+
+          // Group consecutive words by speaker
+          const segments: { src: number | null; srcTag?: string; words: string[] }[] = []
+          let current: { src: number | null; srcTag?: string; words: string[] } | null = null
+          for (const w of words) {
+            if (!current || current.src !== (w.src ?? null)) {
+              current = { src: w.src ?? null, srcTag: w.src_tag, words: [] }
+              segments.push(current)
+            }
+            current.words.push(w.word)
+          }
+
+          if (uniqueUnits.length > 1) {
+            return (
+              <div>
+                <p className="text-muted-foreground text-xs mb-1">Transcription</p>
+                <div className="text-sm max-h-40 overflow-y-auto space-y-1">
+                  {segments.map((seg, i) => {
+                    const unitColor = seg.src !== null ? getUnitColorByRid(seg.src, uniqueUnits) : null
+                    const unitName = seg.srcTag || (seg.src !== null ? `Unit ${seg.src}` : 'Unknown')
+                    return (
+                      <p key={i}>
+                        <span className={cn("font-medium", unitColor?.text)}>
+                          {unitName}:
+                        </span>{' '}
+                        <span className="italic text-muted-foreground">
+                          {seg.words.join(' ')}
+                        </span>
+                      </p>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          }
+        }
+
+        return (
+          <div>
+            <p className="text-muted-foreground text-xs mb-1">Transcription</p>
+            <p className="text-sm italic max-h-32 overflow-y-auto">{text}</p>
+          </div>
+        )
+      })()}
+
+      {/* Links */}
+      <div className="pt-2 border-t flex gap-2">
+        <Link
+          to={`/calls/${call.call_id}`}
+          className="text-xs text-primary hover:underline"
+        >
+          View call details →
+        </Link>
+        <Link
+          to={`/talkgroups/${call.system_id}:${call.tgid}`}
+          className="text-xs text-primary hover:underline"
+        >
+          View talkgroup →
+        </Link>
       </div>
     </div>
   )
