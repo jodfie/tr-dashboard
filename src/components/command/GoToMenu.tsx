@@ -14,7 +14,10 @@ const NAVIGATION_OPTIONS = [
   { key: 'C', label: 'Calls', path: '/calls' },
   { key: 'T', label: 'Talkgroups', path: '/talkgroups' },
   { key: 'U', label: 'Units', path: '/units' },
+  { key: 'A', label: 'Affiliations', path: '/affiliations' },
+  { key: 'R', label: 'Directory', path: '/directory' },
   { key: 'S', label: 'Settings', path: '/settings' },
+  { key: 'X', label: 'Admin', path: '/admin' },
 ]
 
 export function GoToMenu({ open, onOpenChange, onNavigate }: GoToMenuProps) {
@@ -195,8 +198,8 @@ export function GoToMenu({ open, onOpenChange, onNavigate }: GoToMenuProps) {
               <div className="px-2 py-1 text-xs font-medium text-muted-foreground">Talkgroups</div>
               {talkgroups.map((tg) => (
                 <button
-                  key={`${tg.sysid}:${tg.tgid}`}
-                  onClick={() => onNavigate(`/talkgroups/${tg.sysid}:${tg.tgid}`)}
+                  key={`${tg.system_id}:${tg.tgid}`}
+                  onClick={() => onNavigate(`/talkgroups/${tg.system_id}:${tg.tgid}`)}
                   className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-sm hover:bg-accent transition-colors"
                 >
                   <div className="flex h-7 w-7 items-center justify-center rounded bg-primary/20 text-primary text-xs font-semibold shrink-0">
@@ -226,8 +229,8 @@ export function GoToMenu({ open, onOpenChange, onNavigate }: GoToMenuProps) {
               <div className="px-2 py-1 text-xs font-medium text-muted-foreground">Units</div>
               {units.map((unit) => (
                 <button
-                  key={`${unit.sysid}:${unit.unit_id}`}
-                  onClick={() => onNavigate(`/units/${unit.sysid}:${unit.unit_id}`)}
+                  key={`${unit.system_id}:${unit.unit_id}`}
+                  onClick={() => onNavigate(`/units/${unit.system_id}:${unit.unit_id}`)}
                   className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-sm hover:bg-accent transition-colors"
                 >
                   <div className="flex h-7 w-7 items-center justify-center rounded bg-info/20 text-info text-xs font-semibold shrink-0">

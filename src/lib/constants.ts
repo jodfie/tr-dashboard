@@ -19,7 +19,10 @@ export const KEYBOARD_SHORTCUTS = {
   GO_TO_CALLS: 'g>c',
   GO_TO_TALKGROUPS: 'g>t',
   GO_TO_UNITS: 'g>u',
+  GO_TO_AFFILIATIONS: 'g>a',
+  GO_TO_DIRECTORY: 'g>r',
   GO_TO_SETTINGS: 'g>s',
+  GO_TO_ADMIN: 'g>x',
 } as const
 
 export const REFRESH_INTERVALS = {
@@ -57,14 +60,16 @@ export const EVENT_COLORS = {
   status_update: 'bg-muted text-muted-foreground',
 } as const
 
-export const RECORDER_STATE_NAMES: Record<number, string> = {
-  0: 'Available',
-  1: 'Recording',
-  2: 'Idle',
+export const RECORDER_STATE_NAMES: Record<string, string> = {
+  available: 'Available',
+  recording: 'Recording',
+  idle: 'Idle',
+  stopped: 'Stopped',
 }
 
-export const RECORDER_STATE_COLORS: Record<number, string> = {
-  0: 'text-muted-foreground',
-  1: 'text-live',
-  2: 'text-muted-foreground',
+export const RECORDER_STATE_COLORS: Record<string, string> = {
+  available: 'text-muted-foreground',
+  recording: 'text-live',
+  idle: 'text-muted-foreground',
+  stopped: 'text-warning',
 }

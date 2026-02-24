@@ -152,6 +152,31 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
             </Command.Item>
 
             <Command.Item
+              value="go-to-affiliations"
+              onSelect={() => runCommand(() => navigate('/affiliations'))}
+              className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-sm aria-selected:bg-accent"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+              </svg>
+              <span>Go to Affiliations</span>
+              <kbd className="ml-auto text-xs text-muted-foreground">g a</kbd>
+            </Command.Item>
+
+            <Command.Item
+              value="go-to-directory"
+              onSelect={() => runCommand(() => navigate('/directory'))}
+              className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-sm aria-selected:bg-accent"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20" />
+              </svg>
+              <span>Go to Directory</span>
+              <kbd className="ml-auto text-xs text-muted-foreground">g r</kbd>
+            </Command.Item>
+
+            <Command.Item
               value="go-to-settings"
               onSelect={() => runCommand(() => navigate('/settings'))}
               className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-sm aria-selected:bg-accent"
@@ -163,6 +188,18 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
               <span>Go to Settings</span>
               <kbd className="ml-auto text-xs text-muted-foreground">g s</kbd>
             </Command.Item>
+
+            <Command.Item
+              value="go-to-admin"
+              onSelect={() => runCommand(() => navigate('/admin'))}
+              className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-sm aria-selected:bg-accent"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10" />
+              </svg>
+              <span>Go to Admin</span>
+              <kbd className="ml-auto text-xs text-muted-foreground">g x</kbd>
+            </Command.Item>
           </Command.Group>
 
           {/* Talkgroup results */}
@@ -170,9 +207,9 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
             <Command.Group heading="Talkgroups" className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
               {talkgroups.map((tg) => (
                 <Command.Item
-                  key={`${tg.sysid}:${tg.tgid}`}
-                  value={`talkgroup-${tg.sysid}-${tg.tgid}-${tg.alpha_tag || ''}`}
-                  onSelect={() => runCommand(() => navigate(`/talkgroups/${tg.sysid}:${tg.tgid}`))}
+                  key={`${tg.system_id}:${tg.tgid}`}
+                  value={`talkgroup-${tg.system_id}-${tg.tgid}-${tg.alpha_tag || ''}`}
+                  onSelect={() => runCommand(() => navigate(`/talkgroups/${tg.system_id}:${tg.tgid}`))}
                   className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-sm aria-selected:bg-accent"
                 >
                   <div className="flex h-6 w-6 items-center justify-center rounded bg-primary/20 text-primary text-xs font-semibold">
@@ -197,9 +234,9 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
             <Command.Group heading="Units" className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
               {units.map((unit) => (
                 <Command.Item
-                  key={`${unit.sysid}:${unit.unit_id}`}
-                  value={`unit-${unit.sysid}-${unit.unit_id}-${unit.alpha_tag || ''}`}
-                  onSelect={() => runCommand(() => navigate(`/units/${unit.sysid}:${unit.unit_id}`))}
+                  key={`${unit.system_id}:${unit.unit_id}`}
+                  value={`unit-${unit.system_id}-${unit.unit_id}-${unit.alpha_tag || ''}`}
+                  onSelect={() => runCommand(() => navigate(`/units/${unit.system_id}:${unit.unit_id}`))}
                   className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-sm aria-selected:bg-accent"
                 >
                   <div className="flex h-6 w-6 items-center justify-center rounded bg-info/20 text-info text-xs font-semibold">

@@ -7,34 +7,19 @@ import { AudioPlayer } from '@/components/audio/AudioPlayer'
 import { CommandPalette } from '@/components/command/CommandPalette'
 import { GoToMenu } from '@/components/command/GoToMenu'
 import { initializeRealtimeConnection } from '@/stores/useRealtimeStore'
-import { useTalkgroupCache } from '@/stores/useTalkgroupCache'
-import { getTalkgroups } from '@/api/client'
 import { KEYBOARD_SHORTCUTS } from '@/lib/constants'
 
 export function MainLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [commandOpen, setCommandOpen] = useState(false)
   const [goToMenuOpen, setGoToMenuOpen] = useState(false)
-  const addTalkgroupsToCache = useTalkgroupCache((s) => s.addTalkgroups)
   const navigate = useNavigate()
 
-  // Initialize WebSocket connection
+  // Initialize SSE connection
   useEffect(() => {
     const cleanup = initializeRealtimeConnection()
     return cleanup
   }, [])
-
-  // Warm the talkgroup cache on startup
-  useEffect(() => {
-    // Fetch talkgroups to populate cache for sidebar display
-    getTalkgroups({ limit: 500 })
-      .then((res) => {
-        addTalkgroupsToCache(res.talkgroups)
-      })
-      .catch((err) => {
-        console.error('Failed to warm talkgroup cache:', err)
-      })
-  }, [addTalkgroupsToCache])
 
   const toggleSidebar = useCallback(() => {
     setSidebarCollapsed((prev) => !prev)
@@ -86,10 +71,28 @@ export function MainLayout() {
     navigate('/units')
   })
 
+  useHotkeys(KEYBOARD_SHORTCUTS.GO_TO_AFFILIATIONS, (e) => {
+    e.preventDefault()
+    setGoToMenuOpen(false)
+    navigate('/affiliations')
+  })
+
+  useHotkeys(KEYBOARD_SHORTCUTS.GO_TO_DIRECTORY, (e) => {
+    e.preventDefault()
+    setGoToMenuOpen(false)
+    navigate('/directory')
+  })
+
   useHotkeys(KEYBOARD_SHORTCUTS.GO_TO_SETTINGS, (e) => {
     e.preventDefault()
     setGoToMenuOpen(false)
     navigate('/settings')
+  })
+
+  useHotkeys(KEYBOARD_SHORTCUTS.GO_TO_ADMIN, (e) => {
+    e.preventDefault()
+    setGoToMenuOpen(false)
+    navigate('/admin')
   })
 
   // Escape to close menus
