@@ -12,7 +12,7 @@ Real-time call activity with transcription previews, recorder status, decode rat
 ![Dashboard](screenshots/dashboard.png)
 
 ### Call History
-Browse 190k+ recorded calls with filters, transcription previews, and inline playback.
+Browse the full call history with filters, transcription previews, and inline playback.
 
 ![Calls](screenshots/calls.png)
 
@@ -27,12 +27,12 @@ Full-text search across all radio transcriptions with keyword highlighting, time
 ![Talkgroup Analytics](screenshots/talkgroup-analytics.png)
 
 ### Talkgroups
-Browse 1,200+ talkgroups with call stats, tag-based filtering, monitor/favorite controls, and color customization.
+Browse all talkgroups with call stats, tag-based filtering, monitor/favorite controls, and color customization.
 
 ![Talkgroups](screenshots/talkgroups.png)
 
 ### Units
-12,000+ radio units with real-time event tracking, talkgroup affiliations, and activity indicators.
+All known radio units with real-time event tracking, talkgroup affiliations, and activity indicators.
 
 ![Units](screenshots/units.png)
 
