@@ -1,0 +1,15 @@
+{$SITE_ADDRESS::80}
+
+handle /api/* {
+	reverse_proxy {$TR_ENGINE_URL:tr-engine:8000} {
+		header_up Authorization "Bearer {$TR_AUTH_TOKEN:}"
+		flush_interval -1
+	}
+}
+
+handle {
+	root * /var/www/html
+	try_files {path} /index.html
+	file_server
+	encode gzip
+}

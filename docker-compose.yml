@@ -1,0 +1,27 @@
+services:
+  tr-dashboard:
+    image: ghcr.io/lumenprima/tr-dashboard:latest
+    # Or build from source:
+    # build: .
+    ports:
+      - "80:80"
+    environment:
+      - TR_ENGINE_URL=tr-engine:8000
+      - TR_AUTH_TOKEN=
+
+    ## Automatic HTTPS with Let's Encrypt:
+    ## Set SITE_ADDRESS to your domain, expose port 443,
+    ## and add a volume for Caddy's certificate storage.
+    #
+    # ports:
+    #   - "80:80"
+    #   - "443:443"
+    # environment:
+    #   - SITE_ADDRESS=dashboard.example.com
+    #   - TR_ENGINE_URL=tr-engine:8000
+    #   - TR_AUTH_TOKEN=your-token
+    # volumes:
+    #   - caddy_data:/data
+
+# volumes:
+#   caddy_data:

@@ -64,7 +64,76 @@ Full call metadata, signal quality, transcription with word-level timing, and tr
 - React Router v7
 - OpenAPI TypeScript (auto-generated API types)
 
-## Getting Started
+## Quick Start (Docker)
+
+The easiest way to run tr-dashboard alongside [tr-engine](https://github.com/LumenPrima/tr-engine).
+
+### 1. Add to your Docker Compose
+
+Add this service to your existing `docker-compose.yml` (or use the included one):
+
+```yaml
+services:
+  tr-dashboard:
+    image: ghcr.io/lumenprima/tr-dashboard:latest
+    ports:
+      - "80:80"
+    environment:
+      - TR_ENGINE_URL=tr-engine:8000
+      - TR_AUTH_TOKEN=your-token-here
+```
+
+### 2. Start it
+
+```bash
+docker compose up -d
+```
+
+Visit `http://your-server` and you're done.
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TR_ENGINE_URL` | `tr-engine:8000` | Address of your tr-engine backend |
+| `TR_AUTH_TOKEN` | *(empty)* | Bearer token for tr-engine API authentication |
+| `SITE_ADDRESS` | `:80` | Caddy site address — set to a domain for automatic HTTPS |
+
+### Automatic HTTPS
+
+To enable automatic Let's Encrypt certificates, set `SITE_ADDRESS` to your domain and expose port 443:
+
+```yaml
+services:
+  tr-dashboard:
+    image: ghcr.io/lumenprima/tr-dashboard:latest
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - SITE_ADDRESS=dashboard.example.com
+      - TR_ENGINE_URL=tr-engine:8000
+      - TR_AUTH_TOKEN=your-token-here
+    volumes:
+      - caddy_data:/data
+
+volumes:
+  caddy_data:
+```
+
+Caddy automatically provisions and renews TLS certificates. Ports 80 and 443 must be publicly accessible, and the domain must point to your server.
+
+### Build from Source
+
+```bash
+git clone https://github.com/LumenPrima/tr-dashboard.git
+cd tr-dashboard
+docker build -t tr-dashboard .
+```
+
+## Development Setup
+
+For contributing or local development.
 
 ### Prerequisites
 
@@ -81,18 +150,16 @@ npm install
 
 ### Configure
 
-The dashboard proxies API requests to tr-engine in development. If your backend requires authentication, create a `.env` file:
+The dev server proxies API requests to tr-engine. If your backend requires authentication, create a `.env` file:
 
 ```bash
 # .env
 TR_AUTH_TOKEN=your-auth-token-here
 ```
 
-The token is injected as a `Bearer` token in the `Authorization` header on all proxied API requests during development.
-
 The proxy target is configured in `vite.config.ts` (default: `https://tr-engine.luxprimatech.com`). Change this to point at your own tr-engine instance.
 
-### Development
+### Run
 
 ```bash
 npm run dev
@@ -100,49 +167,12 @@ npm run dev
 
 Runs on `http://localhost:5173` with API proxy to the tr-engine backend.
 
-### Production Build
+### Build
 
 ```bash
-npm run build
-```
-
-Outputs static files to `dist/`. Deploy these behind a reverse proxy (Caddy, nginx, etc.) that:
-
-1. Serves the static files from `dist/`
-2. Proxies `/api/*` requests to your tr-engine backend
-3. Injects the `Authorization: Bearer <token>` header on proxied requests if auth is required
-4. Uses `try_files` to fall back to `index.html` for client-side routing
-
-Example Caddy config:
-
-```
-tr-dashboard.example.com {
-    handle /api/* {
-        reverse_proxy localhost:8000 {
-            header_up Authorization "Bearer YOUR_TOKEN_HERE"
-        }
-    }
-    handle {
-        root * /var/www/tr-dashboard
-        try_files {path} /index.html
-        file_server
-    }
-    encode gzip
-}
-```
-
-### Regenerate API Types
-
-Types are auto-generated from the backend OpenAPI spec:
-
-```bash
-npm run api:generate
-```
-
-### Type Check
-
-```bash
-npm run lint
+npm run build        # Type-check + build
+npm run lint         # Type-check only
+npm run api:generate # Regenerate API types from OpenAPI spec
 ```
 
 ## Keyboard Shortcuts

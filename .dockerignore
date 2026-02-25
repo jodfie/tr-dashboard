@@ -1,0 +1,9 @@
+node_modules
+dist
+.git
+.claude
+.playwright-mcp
+screenshots
+*.png
+.env
+.env.*
