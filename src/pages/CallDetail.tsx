@@ -328,6 +328,43 @@ export default function CallDetail() {
                 })}
               </div>
             </div>
+
+            {/* Frequency hops - only when multiple frequencies */}
+            {frequencies.length > 1 && (
+              <div>
+                <p className="mb-1.5 text-xs text-muted-foreground">Frequency Changes</p>
+                <div className="relative h-6 rounded bg-muted/30 overflow-hidden">
+                  {frequencies.map((f, i) => {
+                    const left = (f.pos / (call.duration ?? 1)) * 100
+                    const width = (f.len / (call.duration ?? 1)) * 100
+                    const label = formatFrequency(f.freq)
+                    const showLabel = width > 8
+                    const errorInfo = [
+                      f.error_count ? `${f.error_count} errors` : '',
+                      f.spike_count ? `${f.spike_count} spikes` : '',
+                    ].filter(Boolean).join(', ')
+                    const tooltip = `${label} — ${f.len.toFixed(1)}s${errorInfo ? ` (${errorInfo})` : ''}`
+                    return (
+                      <div
+                        key={i}
+                        className="absolute top-0 h-full rounded-sm bg-cyan-500/60 flex items-center justify-center overflow-hidden"
+                        style={{
+                          left: `${left}%`,
+                          width: `${Math.max(width, 0.5)}%`,
+                        }}
+                        title={tooltip}
+                      >
+                        {showLabel && (
+                          <span className="truncate px-1 text-[9px] font-semibold text-slate-900">
+                            {label}
+                          </span>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
