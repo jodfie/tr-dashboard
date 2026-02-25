@@ -185,21 +185,26 @@ export default function TalkgroupAnalytics() {
     setCrossRefLoading(true)
     Promise.all(
       topUnits.map((u) =>
-        getUnitCalls(`${talkgroup.system_id}:${u.unit_id}`, { limit: 100 })
-          .then((res) => ({ unit_id: u.unit_id, alpha_tag: u.alpha_tag || '', system_id: talkgroup.system_id, calls: res.calls || [] }))
-          .catch(() => ({ unit_id: u.unit_id, alpha_tag: u.alpha_tag || '', system_id: talkgroup.system_id, calls: [] as Call[] }))
+        getUnitCalls(`${talkgroup.system_id}:${u.unit_id}`, { limit: 1000 })
+          .then((res) => ({ unit_id: u.unit_id, alpha_tag: u.alpha_tag || '', system_id: talkgroup.system_id, calls: res.calls || [], total: res.total }))
+          .catch(() => ({ unit_id: u.unit_id, alpha_tag: u.alpha_tag || '', system_id: talkgroup.system_id, calls: [] as Call[], total: 0 }))
       )
     ).then((results) => {
       setCrossRefs(
         results.map((r) => {
           const tgCounts = new Map<number, { tgid: number; alpha_tag: string; count: number }>()
+          let thisTgSample = 0
           for (const call of r.calls) {
-            if (call.tgid === talkgroup.tgid) continue
+            if (call.tgid === talkgroup.tgid) { thisTgSample++; continue }
             const ex = tgCounts.get(call.tgid)
             if (ex) { ex.count++; if (!ex.alpha_tag && call.tg_alpha_tag) ex.alpha_tag = call.tg_alpha_tag }
             else tgCounts.set(call.tgid, { tgid: call.tgid, alpha_tag: call.tg_alpha_tag || '', count: 1 })
           }
-          const thisCount = r.calls.filter((c) => c.tgid === talkgroup.tgid).length
+          // Extrapolate count when we hit the fetch limit
+          const sampleSize = r.calls.length
+          const thisCount = sampleSize > 0 && sampleSize < r.total
+            ? Math.round((thisTgSample / sampleSize) * r.total)
+            : thisTgSample
           return {
             unit_id: r.unit_id,
             alpha_tag: r.alpha_tag,
