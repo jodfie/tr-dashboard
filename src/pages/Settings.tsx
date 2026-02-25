@@ -203,13 +203,13 @@ export default function Settings() {
                 <Input
                   type="number"
                   value={signalThresholds[goodKey]}
-                  onChange={(e) => setThreshold(goodKey, Number(e.target.value))}
+                  onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) setThreshold(goodKey, v) }}
                   className="w-24 h-8 text-center font-mono"
                 />
                 <Input
                   type="number"
                   value={signalThresholds[poorKey]}
-                  onChange={(e) => setThreshold(poorKey, Number(e.target.value))}
+                  onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) setThreshold(poorKey, v) }}
                   className="w-24 h-8 text-center font-mono"
                 />
               </div>

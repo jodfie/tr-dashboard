@@ -329,8 +329,8 @@ export default function CallDetail() {
               </div>
             </div>
 
-            {/* Frequency hops - only when multiple frequencies */}
-            {frequencies.length > 1 && (
+            {/* Frequency hops - only when multiple distinct frequencies */}
+            {new Set(frequencies.map(f => f.freq)).size > 1 && (
               <div>
                 <p className="mb-1.5 text-xs text-muted-foreground">Frequency Changes</p>
                 <div className="relative h-6 rounded bg-muted/30 overflow-hidden">
@@ -389,6 +389,7 @@ export default function CallDetail() {
                 {hasUnits && transcription.words?.words && transcription.words.words.length > 0 ? (
                   <TranscriptionWithSpeakers
                     words={transcription.words.words}
+                    fullText={transcription.text}
                     uniqueUnits={uniqueUnits}
                   />
                 ) : (
@@ -516,21 +517,28 @@ export default function CallDetail() {
 // Transcription display with speaker attribution from AttributedWord
 function TranscriptionWithSpeakers({
   words,
+  fullText,
   uniqueUnits,
 }: {
   words: { word: string; start: number; end: number; src: number; src_tag?: string }[]
+  fullText?: string
   uniqueUnits: number[]
 }) {
+  // Use punctuated words from full text when available (word objects strip punctuation)
+  const punctuatedWords = fullText ? fullText.split(/\s+/) : null
+  const usePunctuated = punctuatedWords && punctuatedWords.length === words.length
+
   // Group consecutive words by speaker
   const segments: { src: number | null; srcTag?: string; words: string[] }[] = []
   let current: { src: number | null; srcTag?: string; words: string[] } | null = null
 
-  for (const w of words) {
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i]
     if (!current || current.src !== (w.src ?? null)) {
       current = { src: w.src ?? null, srcTag: w.src_tag, words: [] }
       segments.push(current)
     }
-    current.words.push(w.word)
+    current.words.push(usePunctuated ? punctuatedWords[i] : w.word)
   }
 
   return (
