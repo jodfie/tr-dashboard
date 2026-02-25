@@ -16,6 +16,7 @@ import {
   cn,
 } from '@/lib/utils'
 import { useSignalThresholds, getSignalColor } from '@/stores/useSignalThresholds'
+import { TRANSMISSION_COLORS } from '@/components/audio/TransmissionTimeline'
 
 export default function CallDetail() {
   const { id } = useParams<{ id: string }>()
@@ -279,6 +280,57 @@ export default function CallDetail() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Visual Timelines */}
+      {transmissions.length > 0 && (call.duration ?? 0) > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Timeline</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Transmission timeline */}
+            <div>
+              <p className="mb-1.5 text-xs text-muted-foreground">Transmissions</p>
+              <div className="relative h-6 rounded bg-muted/30 overflow-hidden">
+                {transmissions
+                  .filter((tx) => tx.duration > 0)
+                  .map((tx, i) => {
+                    const unitIndex = uniqueUnits.indexOf(tx.src)
+                    const color = TRANSMISSION_COLORS[unitIndex % TRANSMISSION_COLORS.length] || 'bg-muted'
+                    const left = (tx.pos / (call.duration ?? 1)) * 100
+                    const width = (tx.duration / (call.duration ?? 1)) * 100
+                    const unitName = tx.tag || getUnitDisplayName(tx.src)
+                    return (
+                      <div
+                        key={i}
+                        className={cn('absolute top-0 h-full rounded-sm', color)}
+                        style={{
+                          left: `${left}%`,
+                          width: `${Math.max(width, 0.5)}%`,
+                        }}
+                        title={`${unitName} — ${tx.duration.toFixed(1)}s at ${tx.pos.toFixed(1)}s`}
+                      />
+                    )
+                  })}
+              </div>
+              {/* Legend */}
+              <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                {uniqueUnits.map((src, i) => {
+                  const color = TRANSMISSION_COLORS[i % TRANSMISSION_COLORS.length]
+                  const tx = transmissions.find((t) => t.src === src)
+                  const name = tx?.tag || getUnitDisplayName(src)
+                  return (
+                    <span key={src} className="inline-flex items-center gap-1.5">
+                      <span className={cn('inline-block h-2 w-2 rounded-full', color)} />
+                      <span>{name}</span>
+                    </span>
+                  )
+                })}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Transcription */}
       {transcription && (
