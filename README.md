@@ -4,6 +4,43 @@ Modern, responsive frontend for [tr-engine](https://github.com/LumenPrima/tr-eng
 
 **[Live Demo](https://tr-dashboard.luxprimatech.com)** — connected to a live MARCS (Ohio) trunk-recorder system.
 
+## Screenshots
+
+### Dashboard — Live Monitoring
+Real-time call activity with transcription previews, recorder status, decode rates, and active talkgroups.
+
+![Dashboard](screenshots/dashboard.png)
+
+### Call History
+Browse 190k+ recorded calls with filters, transcription previews, and inline playback.
+
+![Calls](screenshots/calls.png)
+
+### Transcription Search
+Full-text search across all radio transcriptions with keyword highlighting, time/talkgroup filtering, and relevance ranking.
+
+![Transcription Search](screenshots/transcription-search.png)
+
+### Talkgroup Analytics
+30-day call activity charts, hourly breakdowns, top units with call counts, keyword extraction from transcriptions, and unit cross-reference.
+
+![Talkgroup Analytics](screenshots/talkgroup-analytics.png)
+
+### Talkgroups
+Browse 1,200+ talkgroups with call stats, tag-based filtering, monitor/favorite controls, and color customization.
+
+![Talkgroups](screenshots/talkgroups.png)
+
+### Units
+12,000+ radio units with real-time event tracking, talkgroup affiliations, and activity indicators.
+
+![Units](screenshots/units.png)
+
+### Call Detail
+Full call metadata, signal quality, transcription with word-level timing, and transmission breakdown.
+
+![Call Detail](screenshots/call-detail.png)
+
 ## Features
 
 - **Real-time monitoring** — Live call activity, active talkgroups, unit events, recorder status, system health

@@ -31,8 +31,5 @@ yarn-error.log*
 # Vite cache
 .vite/
 
-# Screenshots (development artifacts)
-screenshots/
-
 # Git worktrees
 .worktrees/
