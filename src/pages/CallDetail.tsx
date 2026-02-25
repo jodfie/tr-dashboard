@@ -485,6 +485,15 @@ export default function CallDetail() {
                         </p>
                         <p className="text-sm text-muted-foreground">
                           {freq?.freq ? formatFrequency(freq.freq) : ''}{freq?.freq ? ' • ' : ''}{tx.pos.toFixed(1)}s{tx.duration > 0 ? ` • ${formatDuration(tx.duration)}` : ''}
+                          {(freq?.error_count ?? 0) > 0 || (freq?.spike_count ?? 0) > 0 ? (
+                            <span className="text-yellow-400/80">
+                              {' • '}
+                              {[
+                                freq?.error_count ? `${freq.error_count} err` : '',
+                                freq?.spike_count ? `${freq.spike_count} spike${freq.spike_count > 1 ? 's' : ''}` : '',
+                              ].filter(Boolean).join(', ')}
+                            </span>
+                          ) : null}
                         </p>
                       </div>
                     </div>
