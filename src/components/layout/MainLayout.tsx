@@ -7,6 +7,8 @@ import { AudioPlayer } from '@/components/audio/AudioPlayer'
 import { CommandPalette } from '@/components/command/CommandPalette'
 import { GoToMenu } from '@/components/command/GoToMenu'
 import { initializeRealtimeConnection } from '@/stores/useRealtimeStore'
+import { useUpdateStore } from '@/stores/useUpdateStore'
+import { getHealth } from '@/api/client'
 import { KEYBOARD_SHORTCUTS } from '@/lib/constants'
 
 export function MainLayout() {
@@ -15,11 +17,18 @@ export function MainLayout() {
   const [goToMenuOpen, setGoToMenuOpen] = useState(false)
   const navigate = useNavigate()
 
-  // Initialize SSE connection
+  const checkForUpdate = useUpdateStore((s) => s.checkForUpdate)
+
+  // Initialize SSE connection and check for updates
   useEffect(() => {
     const cleanup = initializeRealtimeConnection()
+
+    getHealth()
+      .then((health) => checkForUpdate(health.version ?? null))
+      .catch(() => checkForUpdate())
+
     return cleanup
-  }, [])
+  }, [checkForUpdate])
 
   const toggleSidebar = useCallback(() => {
     setSidebarCollapsed((prev) => !prev)

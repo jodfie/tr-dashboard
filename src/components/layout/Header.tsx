@@ -8,6 +8,7 @@ import { useAudioStore } from '@/stores/useAudioStore'
 import { getHealth } from '@/api/client'
 import { formatDecodeRate } from '@/lib/utils'
 import { cn } from '@/lib/utils'
+import { useUpdateStore } from '@/stores/useUpdateStore'
 import { APP_VERSION } from '@/version'
 
 interface HeaderProps {
@@ -26,6 +27,9 @@ export function Header({ onToggleSidebar, onOpenCommand }: HeaderProps) {
   const toggleMonitoring = useMonitorStore((s) => s.toggleMonitoring)
 
   const queue = useAudioStore((s) => s.queue)
+
+  const latestVersion = useUpdateStore((s) => s.latestVersion)
+  const updateUrl = useUpdateStore((s) => s.updateUrl)
 
   const [apiVersion, setApiVersion] = useState<string | null>(null)
 
@@ -81,6 +85,19 @@ export function Header({ onToggleSidebar, onOpenCommand }: HeaderProps) {
             v{APP_VERSION}
             {apiVersion && ` / api ${apiVersion}`}
           </span>
+          {latestVersion && latestVersion !== APP_VERSION && (
+            updateUrl ? (
+              <a href={updateUrl} target="_blank" rel="noopener noreferrer">
+                <Badge variant="warning" className="text-[10px] px-1.5 py-0">
+                  v{latestVersion} available
+                </Badge>
+              </a>
+            ) : (
+              <Badge variant="warning" className="text-[10px] px-1.5 py-0">
+                v{latestVersion} available
+              </Badge>
+            )
+          )}
         </button>
       </div>
 

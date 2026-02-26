@@ -9,6 +9,8 @@ import { useFilterStore } from '@/stores/useFilterStore'
 import { useAudioStore } from '@/stores/useAudioStore'
 import { useTalkgroupColors, ColorRule, RuleMode } from '@/stores/useTalkgroupColors'
 import { useSignalThresholds, type SignalThresholds } from '@/stores/useSignalThresholds'
+import { useUpdateStore } from '@/stores/useUpdateStore'
+import { APP_VERSION } from '@/version'
 import { getSSEManager } from '@/api/eventsource'
 import { Plus, Trash2, RotateCcw } from 'lucide-react'
 import { ColorPicker, getHexFromTailwind } from '@/components/ui/color-picker'
@@ -29,6 +31,13 @@ export default function Settings() {
   const signalThresholds = useSignalThresholds()
   const setThreshold = useSignalThresholds((s) => s.setThreshold)
   const resetSignalThresholds = useSignalThresholds((s) => s.resetToDefaults)
+
+  // Update check
+  const updateCheckEnabled = useUpdateStore((s) => s.updateCheckEnabled)
+  const hasCheckedOnce = useUpdateStore((s) => s.hasCheckedOnce)
+  const latestVersion = useUpdateStore((s) => s.latestVersion)
+  const lastChecked = useUpdateStore((s) => s.lastChecked)
+  const setUpdateCheckEnabled = useUpdateStore((s) => s.setUpdateCheckEnabled)
 
   // Talkgroup color rules
   const colorRules = useTalkgroupColors((s) => s.rules)
@@ -556,6 +565,49 @@ export default function Settings() {
             <ShortcutItem label="Go to Directory" keys={['G', 'R']} />
             <ShortcutItem label="Go to Settings" keys={['G', 'S']} />
             <ShortcutItem label="Go to Admin" keys={['G', 'X']} />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Updates */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Updates</CardTitle>
+          <CardDescription>Automatic update checking</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium">Check for updates</p>
+              <p className="text-sm text-muted-foreground">
+                Ping update server on startup to check for new versions
+              </p>
+            </div>
+            <Button
+              variant={updateCheckEnabled ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setUpdateCheckEnabled(!updateCheckEnabled)}
+              disabled={!hasCheckedOnce}
+              title={!hasCheckedOnce ? 'Waiting for first update check to complete' : undefined}
+            >
+              {updateCheckEnabled ? 'On' : 'Off'}
+            </Button>
+          </div>
+
+          <Separator />
+
+          <div className="space-y-1 text-sm text-muted-foreground">
+            <p>Current version: <span className="font-mono text-foreground">v{APP_VERSION}</span></p>
+            {latestVersion && (
+              <p>Latest version: <span className="font-mono text-foreground">v{latestVersion}</span>
+                {latestVersion !== APP_VERSION && (
+                  <Badge variant="warning" className="ml-2 text-[10px] px-1.5 py-0">Update available</Badge>
+                )}
+              </p>
+            )}
+            {lastChecked && (
+              <p>Last checked: {new Date(lastChecked).toLocaleString()}</p>
+            )}
           </div>
         </CardContent>
       </Card>
