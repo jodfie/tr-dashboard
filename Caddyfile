@@ -1,7 +1,7 @@
 {$SITE_ADDRESS::80}
 
 handle /api/* {
-	@has_auth expression `"{env.TR_AUTH_TOKEN}" != ""`
+	@has_auth expression {env.TR_AUTH_TOKEN} != ""
 	request_header @has_auth Authorization "Bearer {env.TR_AUTH_TOKEN}"
 	reverse_proxy {$TR_ENGINE_URL:tr-engine:8000} {
 		flush_interval -1
