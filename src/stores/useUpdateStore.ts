@@ -47,8 +47,8 @@ export const useUpdateStore = create<UpdateState>()(
 
           const data = await res.json()
           set({
-            latestVersion: data.latest_version ?? null,
-            updateUrl: data.update_url ?? null,
+            latestVersion: data.latest ?? null,
+            updateUrl: data.url ?? null,
             lastChecked: new Date().toISOString(),
             hasCheckedOnce: true,
           })
