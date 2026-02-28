@@ -1,10 +1,10 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Command } from 'cmdk'
 import { cn } from '@/lib/utils'
-import { getTalkgroups, getUnits } from '@/api/client'
-import type { Talkgroup, Unit } from '@/api/types'
-import { getTalkgroupDisplayName, getUnitDisplayName } from '@/lib/utils'
+import { getTalkgroups, getUnits, searchTranscriptions } from '@/api/client'
+import type { Talkgroup, Unit, TranscriptionSearchHit } from '@/api/types'
+import { getTalkgroupDisplayName, getUnitDisplayName, formatRelativeTime } from '@/lib/utils'
 
 interface CommandPaletteProps {
   open: boolean
@@ -16,7 +16,10 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const [search, setSearch] = useState('')
   const [talkgroups, setTalkgroups] = useState<Talkgroup[]>([])
   const [units, setUnits] = useState<Unit[]>([])
+  const [transcriptions, setTranscriptions] = useState<TranscriptionSearchHit[]>([])
   const [loading, setLoading] = useState(false)
+  const [transcriptionLoading, setTranscriptionLoading] = useState(false)
+  const transcriptionTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
 
   // Search talkgroups and units when search changes
   useEffect(() => {
@@ -30,8 +33,8 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     setLoading(true)
 
     Promise.all([
-      getTalkgroups({ search, limit: 5 }),
-      getUnits({ search, limit: 5 }),
+      getTalkgroups({ search, limit: 20 }),
+      getUnits({ search, limit: 10 }),
     ])
       .then(([tgRes, unitRes]) => {
         if (!controller.signal.aborted) {
@@ -53,6 +56,44 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     return () => controller.abort()
   }, [open, search])
 
+  // Debounced transcription search (longer delay to avoid flooding)
+  useEffect(() => {
+    if (!open || search.length < 3) {
+      setTranscriptions([])
+      setTranscriptionLoading(false)
+      return
+    }
+
+    setTranscriptionLoading(true)
+    clearTimeout(transcriptionTimerRef.current)
+
+    const controller = new AbortController()
+
+    transcriptionTimerRef.current = setTimeout(() => {
+      searchTranscriptions(search, { limit: 5 })
+        .then((res) => {
+          if (!controller.signal.aborted) {
+            setTranscriptions(res.results || [])
+          }
+        })
+        .catch((err) => {
+          if (!controller.signal.aborted) {
+            console.error('Transcription search error:', err)
+          }
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) {
+            setTranscriptionLoading(false)
+          }
+        })
+    }, 500)
+
+    return () => {
+      controller.abort()
+      clearTimeout(transcriptionTimerRef.current)
+    }
+  }, [open, search])
+
   const runCommand = useCallback(
     (command: () => void) => {
       onOpenChange(false)
@@ -65,14 +106,18 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   useEffect(() => {
     if (!open) {
       setSearch('')
+      setTranscriptions([])
     }
   }, [open])
+
+  const hasResults = talkgroups.length > 0 || units.length > 0 || transcriptions.length > 0
 
   return (
     <Command.Dialog
       open={open}
       onOpenChange={onOpenChange}
       label="Command Menu"
+      shouldFilter={!search || search.length < 2}
       className={cn(
         'fixed inset-0 z-50 flex items-start justify-center pt-[20vh]',
         'bg-background/80 backdrop-blur-sm'
@@ -86,13 +131,13 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           className="w-full border-b bg-transparent px-4 py-3 text-sm outline-none placeholder:text-muted-foreground"
         />
 
-        <Command.List className="max-h-[300px] overflow-auto p-2">
+        <Command.List className="max-h-[400px] overflow-auto p-2">
           <Command.Empty className="py-6 text-center text-sm text-muted-foreground">
-            {loading ? 'Searching...' : 'No results found.'}
+            {loading || transcriptionLoading ? 'Searching...' : 'No results found.'}
           </Command.Empty>
 
-          {/* Navigation commands */}
-          <Command.Group heading="Navigation" className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+          {/* Navigation commands - hidden when showing search results */}
+          {!hasResults && <Command.Group heading="Navigation" className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
             <Command.Item
               value="go-to-dashboard"
               onSelect={() => runCommand(() => navigate('/'))}
@@ -200,7 +245,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
               <span>Go to Admin</span>
               <kbd className="ml-auto text-xs text-muted-foreground">g x</kbd>
             </Command.Item>
-          </Command.Group>
+          </Command.Group>}
 
           {/* Talkgroup results */}
           {talkgroups.length > 0 && (
@@ -215,11 +260,11 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                   <div className="flex h-6 w-6 items-center justify-center rounded bg-primary/20 text-primary text-xs font-semibold">
                     TG
                   </div>
-                  <div className="flex flex-col">
-                    <span>{getTalkgroupDisplayName(tg.tgid, tg.alpha_tag)}</span>
-                    {tg.group && (
-                      <span className="text-xs text-muted-foreground">{tg.group}</span>
-                    )}
+                  <div className="flex flex-col min-w-0">
+                    <span className="truncate">{getTalkgroupDisplayName(tg.tgid, tg.alpha_tag)}</span>
+                    <span className="text-xs text-muted-foreground truncate">
+                      {[tg.group, tg.description].filter(Boolean).join(' — ') || tg.tag || ''}
+                    </span>
                   </div>
                   <span className="ml-auto font-mono text-xs text-muted-foreground">
                     {tg.tgid}
@@ -246,6 +291,33 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                   <span className="ml-auto font-mono text-xs text-muted-foreground">
                     {unit.unit_id}
                   </span>
+                </Command.Item>
+              ))}
+            </Command.Group>
+          )}
+
+          {/* Transcription results */}
+          {(transcriptions.length > 0 || transcriptionLoading) && (
+            <Command.Group
+              heading={transcriptionLoading && transcriptions.length === 0 ? 'Transcriptions (searching...)' : 'Transcriptions'}
+              className="px-2 py-1.5 text-xs font-semibold text-muted-foreground"
+            >
+              {transcriptions.map((hit) => (
+                <Command.Item
+                  key={`transcription-${hit.id}`}
+                  value={`transcription-${hit.id}-${hit.call_id}`}
+                  onSelect={() => runCommand(() => navigate(`/calls/${hit.call_id}`))}
+                  className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-sm aria-selected:bg-accent"
+                >
+                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-emerald-500/20 text-emerald-400 text-xs font-semibold">
+                    Tx
+                  </div>
+                  <div className="flex flex-col min-w-0">
+                    <span className="truncate text-xs">{hit.text}</span>
+                    <span className="text-xs text-muted-foreground truncate">
+                      {[hit.tg_alpha_tag || `TG ${hit.tgid}`, hit.call_start_time && formatRelativeTime(hit.call_start_time)].filter(Boolean).join(' — ')}
+                    </span>
+                  </div>
                 </Command.Item>
               ))}
             </Command.Group>

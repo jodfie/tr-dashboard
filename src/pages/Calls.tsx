@@ -1,8 +1,9 @@
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { SkeletonRow } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { Pagination } from '@/components/ui/pagination'
 import { CallList } from '@/components/calls/CallList'
 import { getCalls, getTalkgroups, getSystems } from '@/api/client'
@@ -24,6 +25,8 @@ export default function Calls() {
   const pageSize = parseInt(searchParams.get('size') || String(DEFAULT_PAGE_SIZE), 10)
   const systemFilter = searchParams.get('system') || ''
   const talkgroupFilter = searchParams.get('talkgroup') || '' // composite "system_id:tgid" or bare "tgid" (legacy)
+  const aroundTime = searchParams.get('around') || '' // ISO timestamp to center view on
+  const highlightCallId = parseInt(searchParams.get('highlight') || '0', 10) || null
 
   const offset = (page - 1) * pageSize
 
@@ -46,6 +49,17 @@ export default function Calls() {
   const tgFilterSystemId = tgFilterParts ? tgFilterParts[0] : undefined
   const tgFilterTgid = tgFilterParts ? tgFilterParts[1] : (talkgroupFilter || undefined)
 
+  // Compute time window when "around" param is set
+  const timeWindow = useMemo(() => {
+    if (!aroundTime) return null
+    const center = new Date(aroundTime)
+    if (isNaN(center.getTime())) return null
+    const windowHours = 4
+    const start = new Date(center.getTime() - windowHours * 60 * 60 * 1000)
+    const end = new Date(center.getTime() + windowHours * 60 * 60 * 1000)
+    return { start_time: start.toISOString(), end_time: end.toISOString() }
+  }, [aroundTime])
+
   // Fetch calls
   useEffect(() => {
     setLoading(true)
@@ -54,6 +68,8 @@ export default function Calls() {
       tgid: tgFilterTgid,
       sort: '-start_time',
       deduplicate: true,
+      start_time: timeWindow?.start_time,
+      end_time: timeWindow?.end_time,
       limit: pageSize,
       offset,
     })
@@ -69,7 +85,7 @@ export default function Calls() {
       })
       .catch(console.error)
       .finally(() => setLoading(false))
-  }, [page, pageSize, systemFilter, tgFilterSystemId, tgFilterTgid, offset, fetchTranscription])
+  }, [page, pageSize, systemFilter, tgFilterSystemId, tgFilterTgid, offset, fetchTranscription, timeWindow])
 
   const updateFilter = useCallback(
     (key: string, value: string) => {
@@ -104,23 +120,73 @@ export default function Calls() {
     [searchParams, setSearchParams]
   )
 
-  // On page 1, prepend active (in-progress) calls from the realtime store
+  // On page 1, prepend active (in-progress) calls from the realtime store (not in time-window mode)
   const activeCalls = useRealtimeStore((s) => s.activeCalls)
   const mergedCalls = useMemo(() => {
-    if (page !== 1) return calls
+    if (page !== 1 || aroundTime) return calls
     const apiCallIds = new Set(calls.map((c) => c.call_id))
     const active = Array.from(activeCalls.values())
       .filter((c) => !apiCallIds.has(c.call_id))
       .sort((a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime())
     return [...active, ...calls]
-  }, [page, calls, activeCalls])
+  }, [page, calls, activeCalls, aroundTime])
+
+  // Find the talkgroup name for the active filter
+  const filteredTgName = useMemo(() => {
+    if (!talkgroupFilter) return null
+    // Try the dropdown list first
+    const tg = talkgroups.find((t) => `${t.system_id}:${t.tgid}` === talkgroupFilter)
+    if (tg?.alpha_tag) return tg.alpha_tag
+    // Fall back to the embedded name from fetched calls
+    const callWithTag = calls.find((c) => c.tg_alpha_tag)
+    if (callWithTag?.tg_alpha_tag) return callWithTag.tg_alpha_tag
+    return `TG ${tgFilterTgid}`
+  }, [talkgroupFilter, talkgroups, tgFilterTgid, calls])
+
+  // Clear the time window but keep talkgroup filter
+  const clearTimeWindow = useCallback(() => {
+    const newParams = new URLSearchParams(searchParams)
+    newParams.delete('around')
+    newParams.delete('highlight')
+    newParams.set('page', '1')
+    setSearchParams(newParams)
+  }, [searchParams, setSearchParams])
+
+  // Scroll to highlighted call after loading
+  const highlightRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!loading && highlightCallId && highlightRef.current) {
+      highlightRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }, [loading, highlightCallId])
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Call History</h1>
-        <p className="text-muted-foreground">Browse recorded calls</p>
+        <h1 className="text-2xl font-bold">
+          {aroundTime && filteredTgName
+            ? `Calls on ${filteredTgName}`
+            : 'Call History'}
+        </h1>
+        <p className="text-muted-foreground">
+          {aroundTime
+            ? 'Viewing calls around a specific time'
+            : 'Browse recorded calls'}
+        </p>
       </div>
+
+      {/* Time window banner */}
+      {aroundTime && (
+        <div className="flex items-center gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-2.5">
+          <Badge variant="outline" className="shrink-0">Time Window</Badge>
+          <span className="text-sm text-muted-foreground">
+            Showing ±4 hours around {new Date(aroundTime).toLocaleString()}
+          </span>
+          <Button variant="ghost" size="sm" className="ml-auto" onClick={clearTimeWindow}>
+            Show latest
+          </Button>
+        </div>
+      )}
 
       {/* Filters */}
       <Card>
@@ -197,7 +263,12 @@ export default function Calls() {
             ))}
           </div>
         ) : (
-          <CallList calls={mergedCalls} emptyMessage="No calls match your filters" />
+          <CallList
+            calls={mergedCalls}
+            emptyMessage="No calls match your filters"
+            highlightCallId={highlightCallId}
+            highlightRef={highlightRef}
+          />
         )}
       </div>
 

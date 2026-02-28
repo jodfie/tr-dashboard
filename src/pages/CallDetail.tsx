@@ -156,9 +156,16 @@ export default function CallDetail() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <div className="mb-2">
-            <Link to="/calls" className="text-sm text-muted-foreground hover:underline">
-              ← Back to calls
+          <div className="mb-2 flex items-center gap-3 text-sm text-muted-foreground">
+            <Link to="/calls" className="hover:underline">
+              ← All calls
+            </Link>
+            <span>·</span>
+            <Link
+              to={`/calls?talkgroup=${call.system_id}:${tgid}&around=${encodeURIComponent(call.start_time)}&highlight=${call.call_id}`}
+              className="hover:underline"
+            >
+              Calls on {getTalkgroupDisplayName(tgid, tgAlphaTag)}
             </Link>
           </div>
           <h1 className="text-2xl font-bold">

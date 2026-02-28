@@ -1,5 +1,6 @@
-import { useMemo } from 'react'
+import { useMemo, type RefObject } from 'react'
 import { CallCard } from './CallCard'
+import { cn } from '@/lib/utils'
 import type { Call } from '@/api/types'
 
 interface CallListProps {
@@ -8,6 +9,8 @@ interface CallListProps {
   compact?: boolean
   emptyMessage?: string
   deduplicate?: boolean
+  highlightCallId?: number | null
+  highlightRef?: RefObject<HTMLDivElement | null>
 }
 
 // Deduplicate calls by call_group_id or call_id, keeping the first occurrence
@@ -30,6 +33,8 @@ export function CallList({
   compact = false,
   emptyMessage = 'No calls found',
   deduplicate = true,
+  highlightCallId,
+  highlightRef,
 }: CallListProps) {
   const displayCalls = useMemo(
     () => (deduplicate ? deduplicateCalls(calls) : calls),
@@ -51,15 +56,26 @@ export function CallList({
 
   return (
     <div className="space-y-1">
-      {displayCalls.map((call, i) => (
-        <div key={call.call_id} className="card-fade-in" style={{ '--i': i } as React.CSSProperties}>
-          <CallCard
-            call={call}
-            showSystem={showSystem}
-            compact={compact}
-          />
-        </div>
-      ))}
+      {displayCalls.map((call, i) => {
+        const isHighlighted = highlightCallId != null && call.call_id === highlightCallId
+        return (
+          <div
+            key={call.call_id}
+            ref={isHighlighted ? highlightRef : undefined}
+            className={cn(
+              "card-fade-in",
+              isHighlighted && "rounded-lg ring-2 ring-primary ring-offset-1 ring-offset-background"
+            )}
+            style={{ '--i': i } as React.CSSProperties}
+          >
+            <CallCard
+              call={call}
+              showSystem={showSystem}
+              compact={compact}
+            />
+          </div>
+        )
+      })}
     </div>
   )
 }
