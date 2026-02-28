@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.8.5 (2026-02-28)
+
+### Features
+
+- **Multi-talkgroup filtering:** Replace the single talkgroup dropdown on the Calls page with a chip-based multi-select component. Search-as-you-type to find talkgroups, selected ones shown as removable chips. URL supports comma-separated composite keys (`?talkgroup=3:9178,3:5344`).
+- **Cross-linking improvements:** Added clickable navigation links throughout the app for better discoverability:
+  - Talkgroup names on CallCard now link to the talkgroup detail page (previously linked to call detail)
+  - Call timestamps and transcription previews on CallCard link to call detail
+  - TalkgroupDetail: "View all calls" link, clickable unit tags and call timestamps in inline call cards
+  - CallDetail: clickable unit names in timeline legend and transcription speaker labels
+  - UnitDetail: clickable last-event talkgroup tag
+  - Dashboard: 24h calls stat links to /calls, hover card unit badges link to unit pages
+  - Affiliations: top talkgroup badges link to talkgroup detail pages
+
+### Bug Fixes
+
+- **Highlight auto-page navigation:** When navigating to a time-centered call view, the highlighted call now correctly auto-navigates to the page containing it instead of always showing page 1.
+- **Active call filtering:** Active (in-progress) calls from the realtime store are now properly filtered by talkgroup and system filters on the Calls page.
+
 ## 0.8.4 (2026-02-26)
 
 ### Bug Fixes
