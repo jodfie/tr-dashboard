@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.6 (2026-02-28)
+
+### Bug Fixes
+
+- **Transcriptions page browse mode:** The Transcriptions page now shows recent transcribed calls by default instead of requiring a search query. Users can browse recent transcriptions immediately, with search available for filtering. Fixes reports of "no transcriptions visible in the Transcriptions tab."
+
 ## 0.8.5 (2026-02-28)
 
 ### Features

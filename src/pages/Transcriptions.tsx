@@ -4,10 +4,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Pagination } from '@/components/ui/pagination'
 import { SkeletonRow } from '@/components/ui/skeleton'
-import { searchTranscriptions, getCall, getSystems } from '@/api/client'
+import { searchTranscriptions, getCalls, getCall, getSystems } from '@/api/client'
 import { useAudioStore } from '@/stores/useAudioStore'
-import type { TranscriptionSearchHit, System } from '@/api/types'
-import { formatRelativeTime, formatDuration } from '@/lib/utils'
+import { useTranscriptionCache } from '@/stores/useTranscriptionCache'
+import type { TranscriptionSearchHit, Call, System } from '@/api/types'
+import { formatRelativeTime, formatDuration, getTalkgroupDisplayName } from '@/lib/utils'
 
 const DEFAULT_PAGE_SIZE = 25
 
@@ -45,6 +46,13 @@ export default function Transcriptions() {
   const [searchInput, setSearchInput] = useState(searchParams.get('q') || '')
 
   const loadCall = useAudioStore((s) => s.loadCall)
+  const fetchTranscription = useTranscriptionCache((s) => s.fetchTranscription)
+  const getEntry = useTranscriptionCache((s) => s.getEntry)
+
+  // Browse mode: recent transcribed calls (no search query)
+  const [browseCalls, setBrowseCalls] = useState<Call[]>([])
+  const [browseTotal, setBrowseTotal] = useState(0)
+  const [browseLoading, setBrowseLoading] = useState(false)
 
   const query = searchParams.get('q') || ''
   const page = parseInt(searchParams.get('page') || '1', 10)
@@ -93,6 +101,35 @@ export default function Transcriptions() {
       .catch(console.error)
       .finally(() => setLoading(false))
   }, [query, systemFilter, tgidFilter, startTime, pageSize, offset])
+
+  // Browse mode: fetch recent transcribed calls when no search query
+  useEffect(() => {
+    if (query) return
+    setBrowseLoading(true)
+    // Fetch a larger pool and filter to transcribed calls client-side
+    const browsePageSize = pageSize * 3 // overfetch to compensate for non-transcribed calls
+    getCalls({
+      system_id: systemFilter || undefined,
+      tgid: tgidFilter || undefined,
+      start_time: startTime,
+      sort: '-start_time',
+      deduplicate: true,
+      limit: browsePageSize,
+      offset: 0,
+    })
+      .then((res) => {
+        const transcribed = (res.calls || []).filter((c) => c.has_transcription || c.transcription_text)
+        setBrowseCalls(transcribed)
+        setBrowseTotal(transcribed.length)
+        for (const call of transcribed) {
+          if (call.has_transcription) {
+            fetchTranscription(call.call_id)
+          }
+        }
+      })
+      .catch(console.error)
+      .finally(() => setBrowseLoading(false))
+  }, [query, systemFilter, tgidFilter, startTime, pageSize, fetchTranscription])
 
   const submitSearch = useCallback(() => {
     const newParams = new URLSearchParams(searchParams)
@@ -178,9 +215,20 @@ export default function Transcriptions() {
           onKeyDown={(e) => e.key === 'Enter' && submitSearch()}
           className="flex-1"
         />
-        <Button onClick={submitSearch} disabled={!searchInput.trim()}>
+        <Button onClick={submitSearch}>
           Search
         </Button>
+        {query && (
+          <Button variant="ghost" onClick={() => {
+            setSearchInput('')
+            const newParams = new URLSearchParams(searchParams)
+            newParams.delete('q')
+            newParams.set('page', '1')
+            setSearchParams(newParams)
+          }}>
+            Clear
+          </Button>
+        )}
       </div>
 
       {/* Filter bar */}
@@ -229,24 +277,98 @@ export default function Transcriptions() {
           <option value="longest">Longest</option>
         </select>
 
-        {hasSearched && (
-          <span className="ml-auto text-xs text-muted-foreground tabular-nums">
-            {totalCount.toLocaleString()} results
-          </span>
-        )}
+        <span className="ml-auto text-xs text-muted-foreground tabular-nums">
+          {query
+            ? `${totalCount.toLocaleString()} results`
+            : browseTotal > 0
+              ? `${browseTotal} recent transcriptions`
+              : ''
+          }
+        </span>
       </div>
 
       {/* Results */}
       <div>
-        {!hasSearched && !query ? (
-          <div className="flex h-64 flex-col items-center justify-center gap-2 text-muted-foreground">
-            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="opacity-40">
-              <circle cx="11" cy="11" r="8" />
-              <path d="m21 21-4.3-4.3" />
-            </svg>
-            <span>Search across all transcriptions</span>
-            <span className="text-xs">Enter a word or phrase to find matching radio calls</span>
-          </div>
+        {!query ? (
+          browseLoading ? (
+            <div className="space-y-1">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <SkeletonRow key={i} />
+              ))}
+            </div>
+          ) : browseCalls.length === 0 ? (
+            <div className="flex h-64 flex-col items-center justify-center gap-2 text-muted-foreground">
+              <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="opacity-40">
+                <circle cx="11" cy="11" r="8" />
+                <path d="m21 21-4.3-4.3" />
+              </svg>
+              <span>No transcriptions found</span>
+              <span className="text-xs">Try adjusting your filters or check back later</span>
+            </div>
+          ) : (
+            <div className="space-y-1">
+              {browseCalls.map((call, i) => {
+                const entry = getEntry(call.call_id)
+                const text = call.transcription_text || (entry?.status === 'loaded' ? entry.transcription?.text : null)
+                return (
+                  <div
+                    key={call.call_id}
+                    className="flex items-center gap-3 rounded-lg border px-3 py-2 card-call-hover card-fade-in"
+                    style={{ '--i': i } as React.CSSProperties}
+                  >
+                    <button
+                      onClick={() => handlePlay(call.call_id)}
+                      disabled={!call.audio_url || loadingCallId === call.call_id}
+                      className="shrink-0 flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors disabled:opacity-50"
+                      title="Play call audio"
+                    >
+                      {loadingCallId === call.call_id ? (
+                        <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M12 2v4m0 12v4m-7.07-3.93l2.83-2.83m8.49-8.49l2.83-2.83M2 12h4m12 0h4M4.93 4.93l2.83 2.83m8.49 8.49l2.83 2.83" />
+                        </svg>
+                      ) : (
+                        <svg className="h-4 w-4 ml-0.5" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M8 5v14l11-7z" />
+                        </svg>
+                      )}
+                    </button>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <Link
+                          to={`/talkgroups/${call.system_id}:${call.tgid}`}
+                          className="font-medium text-sm truncate hover:underline"
+                        >
+                          {getTalkgroupDisplayName(call.tgid, call.tg_alpha_tag)}
+                        </Link>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        {call.system_name && <span>{call.system_name}</span>}
+                        {call.system_name && <span className="text-muted-foreground/40">&middot;</span>}
+                        <Link to={`/calls/${call.call_id}`} className="hover:underline">
+                          {formatRelativeTime(call.start_time)}
+                        </Link>
+                      </div>
+                    </div>
+
+                    <div className="hidden md:block flex-1 min-w-0">
+                      {text ? (
+                        <p className="text-sm text-muted-foreground italic truncate">{text}</p>
+                      ) : entry?.status === 'loading' ? (
+                        <p className="text-sm text-muted-foreground/50 italic">Loading...</p>
+                      ) : null}
+                    </div>
+
+                    <div className="shrink-0 text-right">
+                      <div className="text-xs text-muted-foreground tabular-nums">
+                        {formatDuration(call.duration ?? 0)}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )
         ) : loading ? (
           <div className="space-y-1">
             {Array.from({ length: 8 }).map((_, i) => (
