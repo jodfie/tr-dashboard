@@ -5,7 +5,6 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { CallList } from '@/components/calls/CallList'
 import { getUnit, getUnitEvents, getUnitCalls, updateUnit } from '@/api/client'
-import { useAuthStore } from '@/stores/useAuthStore'
 import type { Unit, UnitEvent, Call } from '@/api/types'
 import {
   formatDateTime,
@@ -24,31 +23,38 @@ export default function UnitDetail() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const hasWriteToken = useAuthStore((s) => !!s.writeToken)
-
   // Inline edit state
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [editAlphaTag, setEditAlphaTag] = useState('')
+  const [editError, setEditError] = useState<string | null>(null)
 
   const startEdit = useCallback(() => {
     if (!unit) return
     setEditAlphaTag(unit.alpha_tag || '')
+    setEditError(null)
     setEditing(true)
   }, [unit])
 
   const cancelEdit = useCallback(() => {
     setEditing(false)
+    setEditError(null)
   }, [])
 
   const saveEdit = useCallback(async () => {
     if (!id) return
     setSaving(true)
+    setEditError(null)
     try {
       const updated = await updateUnit(id, { alpha_tag: editAlphaTag })
       setUnit(updated)
       setEditing(false)
     } catch (err) {
+      if (err instanceof Error && 'status' in err && (err as { status: number }).status === 403) {
+        setEditError('Write token required. Add it in Settings → Write Access.')
+      } else {
+        setEditError('Failed to save changes.')
+      }
       console.error('Failed to update unit:', err)
     } finally {
       setSaving(false)
@@ -123,7 +129,7 @@ export default function UnitDetail() {
           {unit.alpha_tag_source && (
             <Badge variant="secondary" className="text-xs">Source: {unit.alpha_tag_source}</Badge>
           )}
-          {hasWriteToken && !editing && (
+          {!editing && (
             <Button variant="outline" size="sm" onClick={startEdit}>
               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-1">
                 <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
@@ -153,6 +159,9 @@ export default function UnitDetail() {
             <Button variant="outline" size="sm" onClick={cancelEdit} disabled={saving}>
               Cancel
             </Button>
+            {editError && (
+              <span className="text-xs text-destructive">{editError}</span>
+            )}
           </div>
         ) : (
           <p className="text-muted-foreground text-sm">

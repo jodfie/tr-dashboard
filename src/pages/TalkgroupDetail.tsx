@@ -11,7 +11,6 @@ import { useMonitorStore } from '@/stores/useMonitorStore'
 import { useRealtimeStore } from '@/stores/useRealtimeStore'
 import { useAudioStore, selectIsPlaying } from '@/stores/useAudioStore'
 import { formatDateTime, formatRelativeTime, formatDuration, formatTime, formatFrequency, getUnitColorByRid } from '@/lib/utils'
-import { useAuthStore } from '@/stores/useAuthStore'
 import { TranscriptionPreview } from '@/components/calls/TranscriptionPreview'
 import { CopyableId } from '@/components/ui/copyable-id'
 import { Sparkline } from '@/components/ui/sparkline'
@@ -25,11 +24,10 @@ export default function TalkgroupDetail() {
   const [unitSort, setUnitSort] = useState<'alpha_tag' | 'unit_id' | 'count'>('count')
   const [unitSortDir, setUnitSortDir] = useState<'asc' | 'desc'>('desc')
 
-  const hasWriteToken = useAuthStore((s) => !!s.writeToken)
-
   // Inline edit state
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [editError, setEditError] = useState<string | null>(null)
   const [editForm, setEditForm] = useState<TalkgroupPatch>({})
 
   // Subscribe to state to trigger re-renders
@@ -170,22 +168,30 @@ export default function TalkgroupDetail() {
       tag: talkgroup.tag || '',
       priority: talkgroup.priority ?? 0,
     })
+    setEditError(null)
     setEditing(true)
   }, [talkgroup])
 
   const cancelEdit = useCallback(() => {
     setEditing(false)
     setEditForm({})
+    setEditError(null)
   }, [])
 
   const saveEdit = useCallback(async () => {
     if (!id) return
     setSaving(true)
+    setEditError(null)
     try {
       const updated = await updateTalkgroup(id, editForm)
       setTalkgroup(updated)
       setEditing(false)
     } catch (err) {
+      if (err instanceof Error && 'status' in err && (err as { status: number }).status === 403) {
+        setEditError('Write token required. Add it in Settings → Write Access.')
+      } else {
+        setEditError('Failed to save changes.')
+      }
       console.error('Failed to update talkgroup:', err)
     } finally {
       setSaving(false)
@@ -254,7 +260,7 @@ export default function TalkgroupDetail() {
                 Analytics
               </Button>
             </Link>
-            {hasWriteToken && !editing && (
+            {!editing && (
               <Button variant="outline" onClick={startEdit}>
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
                   <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
@@ -362,7 +368,10 @@ export default function TalkgroupDetail() {
                 placeholder="Description"
               />
             </div>
-            <div className="flex gap-2 justify-end">
+            <div className="flex items-center gap-2 justify-end">
+              {editError && (
+                <span className="text-xs text-destructive mr-auto">{editError}</span>
+              )}
               <Button variant="outline" size="sm" onClick={cancelEdit} disabled={saving}>
                 Cancel
               </Button>
