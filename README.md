@@ -96,7 +96,8 @@ Visit `http://your-server` and you're done.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `TR_ENGINE_URL` | `tr-engine:8000` | Address of your tr-engine backend |
-| `TR_AUTH_TOKEN` | *(empty)* | Bearer token for tr-engine API authentication |
+| `TR_AUTH_TOKEN` | *(empty)* | Bearer token for tr-engine API authentication (read access) |
+| `TR_WRITE_TOKEN` | *(empty)* | Write token for editing talkgroups/units (see [Write Access](#write-access)) |
 | `SITE_ADDRESS` | `:80` | Caddy site address — set to a domain for automatic HTTPS |
 
 ### Automatic HTTPS
@@ -173,6 +174,44 @@ Runs on `http://localhost:5173` with API proxy to the tr-engine backend.
 npm run build        # Type-check + build
 npm run lint         # Type-check only
 npm run api:generate # Regenerate API types from OpenAPI spec
+```
+
+## Write Access
+
+tr-dashboard supports inline editing of talkgroup metadata (name, group, tag, priority, description) and unit names directly from their detail pages.
+
+### How it works
+
+- If your tr-engine has no `WRITE_TOKEN` configured, editing works for everyone automatically.
+- If `WRITE_TOKEN` is set, users need to enter it in **Settings → Write Access** to enable editing. The token is stored in the browser's localStorage.
+- Without a valid write token, the Edit button still appears but saves will show an error message directing users to Settings.
+
+### Reverse proxy setup
+
+If you run tr-dashboard behind a reverse proxy that injects an auth token, make sure it **doesn't overwrite** the `Authorization` header when the browser sends one. The dashboard sends the write token as `Authorization: Bearer <token>` on write requests (PATCH/POST/PUT/DELETE).
+
+**Caddy example** — use conditional injection so the read token is only added when the browser doesn't send its own:
+
+```caddyfile
+handle /api/* {
+    @no_auth not header Authorization *
+    request_header @no_auth Authorization "Bearer {$TR_AUTH_TOKEN}"
+    reverse_proxy tr-engine:8000
+}
+```
+
+**Nginx example:**
+
+```nginx
+location /api/ {
+    # Only set auth header if not provided by the browser
+    set $auth "Bearer your-read-token";
+    if ($http_authorization) {
+        set $auth $http_authorization;
+    }
+    proxy_set_header Authorization $auth;
+    proxy_pass http://tr-engine:8000;
+}
 ```
 
 ## Keyboard Shortcuts

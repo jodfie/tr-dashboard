@@ -1,8 +1,13 @@
 {$SITE_ADDRESS::80}
 
 handle /api/* {
-	@has_auth expression {env.TR_AUTH_TOKEN} != ""
-	request_header @has_auth Authorization "Bearer {env.TR_AUTH_TOKEN}"
+	# Only inject read token when browser doesn't send its own Authorization
+	# (write requests send the write token directly)
+	@needs_auth {
+		not header Authorization *
+		expression {env.TR_AUTH_TOKEN} != ""
+	}
+	request_header @needs_auth Authorization "Bearer {env.TR_AUTH_TOKEN}"
 	reverse_proxy {$TR_ENGINE_URL:tr-engine:8000} {
 		flush_interval -1
 	}
