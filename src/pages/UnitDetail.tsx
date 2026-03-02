@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { CallList } from '@/components/calls/CallList'
 import { getUnit, getUnitEvents, getUnitCalls, updateUnit } from '@/api/client'
+import { useAuthStore } from '@/stores/useAuthStore'
 import type { Unit, UnitEvent, Call } from '@/api/types'
 import {
   formatDateTime,
@@ -22,6 +23,8 @@ export default function UnitDetail() {
   const [calls, setCalls] = useState<Call[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  const hasWriteToken = useAuthStore((s) => !!s.writeToken)
 
   // Inline edit state
   const [editing, setEditing] = useState(false)
@@ -120,7 +123,7 @@ export default function UnitDetail() {
           {unit.alpha_tag_source && (
             <Badge variant="secondary" className="text-xs">Source: {unit.alpha_tag_source}</Badge>
           )}
-          {!editing && (
+          {hasWriteToken && !editing && (
             <Button variant="outline" size="sm" onClick={startEdit}>
               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-1">
                 <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />

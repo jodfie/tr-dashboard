@@ -11,6 +11,7 @@ import { useMonitorStore } from '@/stores/useMonitorStore'
 import { useRealtimeStore } from '@/stores/useRealtimeStore'
 import { useAudioStore, selectIsPlaying } from '@/stores/useAudioStore'
 import { formatDateTime, formatRelativeTime, formatDuration, formatTime, formatFrequency, getUnitColorByRid } from '@/lib/utils'
+import { useAuthStore } from '@/stores/useAuthStore'
 import { TranscriptionPreview } from '@/components/calls/TranscriptionPreview'
 import { CopyableId } from '@/components/ui/copyable-id'
 import { Sparkline } from '@/components/ui/sparkline'
@@ -23,6 +24,8 @@ export default function TalkgroupDetail() {
   const [error, setError] = useState<string | null>(null)
   const [unitSort, setUnitSort] = useState<'alpha_tag' | 'unit_id' | 'count'>('count')
   const [unitSortDir, setUnitSortDir] = useState<'asc' | 'desc'>('desc')
+
+  const hasWriteToken = useAuthStore((s) => !!s.writeToken)
 
   // Inline edit state
   const [editing, setEditing] = useState(false)
@@ -251,7 +254,7 @@ export default function TalkgroupDetail() {
                 Analytics
               </Button>
             </Link>
-            {!editing && (
+            {hasWriteToken && !editing && (
               <Button variant="outline" onClick={startEdit}>
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
                   <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />

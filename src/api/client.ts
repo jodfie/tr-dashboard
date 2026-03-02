@@ -36,7 +36,10 @@ import type {
   UnitPatch,
 } from './types'
 
+import { useAuthStore } from '@/stores/useAuthStore'
+
 const API_BASE = '/api/v1'
+const WRITE_METHODS = new Set(['POST', 'PATCH', 'PUT', 'DELETE'])
 
 class ApiError extends Error {
   constructor(
@@ -54,10 +57,23 @@ async function request<T>(
   options?: RequestInit
 ): Promise<T> {
   const url = `${API_BASE}${endpoint}`
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+
+  // Inject write token for mutating requests
+  const method = (options?.method || 'GET').toUpperCase()
+  if (WRITE_METHODS.has(method)) {
+    const writeToken = useAuthStore.getState().writeToken
+    if (writeToken) {
+      headers['Authorization'] = `Bearer ${writeToken}`
+    }
+  }
+
   const response = await fetch(url, {
     ...options,
     headers: {
-      'Content-Type': 'application/json',
+      ...headers,
       ...options?.headers,
     },
   })

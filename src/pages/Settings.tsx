@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { Input } from '@/components/ui/input'
+import { useAuthStore } from '@/stores/useAuthStore'
 import { useRealtimeStore } from '@/stores/useRealtimeStore'
 import { useFilterStore } from '@/stores/useFilterStore'
 import { useAudioStore } from '@/stores/useAudioStore'
@@ -17,6 +18,9 @@ import { ColorPicker, getHexFromTailwind } from '@/components/ui/color-picker'
 import { parseTalkgroupKey, isNewerVersion } from '@/lib/utils'
 
 export default function Settings() {
+  const writeToken = useAuthStore((s) => s.writeToken)
+  const setWriteToken = useAuthStore((s) => s.setWriteToken)
+  const [tokenInput, setTokenInput] = useState('')
   const connectionStatus = useRealtimeStore((s) => s.connectionStatus)
   const favoriteTalkgroups = useFilterStore((s) => s.favoriteTalkgroups)
   const setFavoriteTalkgroups = useFilterStore((s) => s.setFavoriteTalkgroups)
@@ -108,6 +112,66 @@ export default function Settings() {
               Reconnect
             </Button>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Write Token */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Write Access</CardTitle>
+          <CardDescription>
+            Enter the WRITE_TOKEN from your tr-engine config to enable editing talkgroups and units
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {writeToken ? (
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Badge variant="default" className="bg-success/20 text-success">Configured</Badge>
+                <span className="text-sm text-muted-foreground font-mono">
+                  {writeToken.slice(0, 8)}...
+                </span>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setWriteToken('')
+                  setTokenInput('')
+                }}
+              >
+                Clear
+              </Button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <Input
+                type="password"
+                value={tokenInput}
+                onChange={(e) => setTokenInput(e.target.value)}
+                placeholder="Paste write token"
+                className="flex-1 h-9 font-mono"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && tokenInput.trim()) {
+                    setWriteToken(tokenInput.trim())
+                    setTokenInput('')
+                  }
+                }}
+              />
+              <Button
+                size="sm"
+                onClick={() => {
+                  if (tokenInput.trim()) {
+                    setWriteToken(tokenInput.trim())
+                    setTokenInput('')
+                  }
+                }}
+                disabled={!tokenInput.trim()}
+              >
+                Save
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 
