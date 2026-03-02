@@ -27,8 +27,6 @@ import type {
   EncryptionStatsResponse,
   SystemMergeRequest,
   SystemMergeResponse,
-  QueryRequest,
-  QueryResponse,
   HealthResponse,
   SystemPatch,
   SitePatch,
@@ -526,20 +524,6 @@ export async function mergeSystems(req: SystemMergeRequest): Promise<SystemMerge
   return request('/admin/systems/merge', {
     method: 'POST',
     body: JSON.stringify(req),
-  })
-}
-
-export async function executeQuery(
-  sql: string,
-  params?: unknown[],
-  limit?: number
-): Promise<QueryResponse> {
-  const body: QueryRequest = { sql }
-  if (params) body.params = params
-  if (limit) body.limit = limit
-  return request('/query', {
-    method: 'POST',
-    body: JSON.stringify(body),
   })
 }
 

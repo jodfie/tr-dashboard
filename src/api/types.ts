@@ -584,17 +584,6 @@ export interface SystemMergeResponse {
   events_moved: number
 }
 
-export interface QueryRequest {
-  sql: string
-  params?: unknown[]
-  limit?: number
-}
-
-export interface QueryResponse {
-  columns: string[]
-  rows: unknown[][]
-  row_count: number
-}
 
 // =============================================================================
 // Error Types

@@ -1,11 +1,20 @@
 # Changelog
 
-## 0.8.9 (2026-03-02)
+## 0.9.0 (2026-03-02)
+
+### Features
+
+- **Analog/conventional system support:** System type badges (P25, Analog, SmartNet, DMR, etc.) now display on talkgroup detail, call detail, and system filter dropdowns. Open-ended — automatically handles new system types as tr-engine adds them.
+- **Signal event display:** MDC-1200, FleetSync, and STAR in-band signaling events from analog systems now render in the unit detail event list with signaling type badges and signal type labels. Emergency signal activations get red highlighting.
 
 ### Bug Fixes
 
-- **CallCard pause button:** Clicking the pause button on a call card now actually pauses playback instead of reloading the call. Previously, the pause icon appeared but the click handler always re-loaded the call.
+- **CallCard pause button:** Clicking the pause button on a call card now actually pauses playback instead of reloading the call.
 - **Multi-architecture Docker images:** Docker images are now built for both `linux/amd64` and `linux/arm64`, fixing "platform mismatch" errors on ARM hosts (e.g., Raspberry Pi, Apple Silicon).
+
+### Cleanup
+
+- Removed deprecated `/query` endpoint client code.
 
 ## 0.8.8 (2026-03-01)
 
