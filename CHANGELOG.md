@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.9.1 (2026-03-02)
+
+### Features
+
+- **Systems page:** New masonry-tiled Systems view replaces the old Recorders page. Recorders are grouped by radio system (MARCS, LuzerneP25, ScrantonPD, etc.) with per-system decode rate bars, sparklines, and call stats. Trunked P25 systems sharing a recorder pool (e.g., butco/warco) are grouped together under their parent system name.
+- **Hex unit ID toggle:** New display setting to show unit radio IDs as hexadecimal instead of decimal, useful for MDC-1200 and FleetSync systems where techs work with hex codes. Toggle in Settings → Display.
+- **Analog idle color:** Conventional/analog recorders in idle state now show neutral blue instead of amber, distinguishing them from trunked idle recorders.
+- **Squelch badge by system type:** SQ badge only appears for analog/conventional recorder types where squelch is meaningful, hidden for P25 and DMR.
+
+### Bug Fixes
+
+- **Recorder duplication:** Fixed recorders multiplying on the Systems page when multiple trunk-recorder instances report recorders with the same ID format. Now uses instance-scoped compound keys for deduplication.
+
 ## 0.9.0 (2026-03-02)
 
 ### Features
