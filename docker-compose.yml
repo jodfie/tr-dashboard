@@ -1,18 +1,9 @@
+# Minimal — direct port access, no reverse proxy.
+# You must route /api, /audio, /health to tr-engine yourself.
 services:
   tr-dashboard:
     image: ghcr.io/trunk-reporter/tr-dashboard:latest
-    # Or build from source:
     # build: .
+    restart: unless-stopped
     ports:
       - "3000:3000"
-
-    ## Traefik example — uncomment and adjust for your setup.
-    ## Your reverse proxy must route /api/*, /audio/*, /health/*
-    ## to your tr-engine instance separately.
-    #
-    # labels:
-    #   - "traefik.enable=true"
-    #   - "traefik.http.routers.tr-dashboard.rule=Host(`dashboard.example.com`)"
-    #   - "traefik.http.routers.tr-dashboard.entrypoints=websecure"
-    #   - "traefik.http.routers.tr-dashboard.tls.certresolver=letsencrypt"
-    #   - "traefik.http.services.tr-dashboard.loadbalancer.server.port=3000"

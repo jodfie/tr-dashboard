@@ -1,0 +1,88 @@
+# Full stack with Caddy reverse proxy.
+#
+# Caddy handles TLS automatically and routes:
+#   /api/*, /audio/*, /health/*  →  tr-engine:8080
+#   everything else              →  tr-dashboard:3000
+#
+# Quick start:
+#   cp .env.example .env          (edit with your values)
+#   docker compose -f examples/docker-compose.caddy.yml up -d
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - frontend
+      - backend
+    depends_on:
+      - tr-dashboard
+      - tr-engine
+
+  postgres:
+    image: postgres:17-alpine
+    container_name: tr-engine-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-trengine}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-trengine}
+      TZ: ${TZ:-UTC}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-trengine}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - backend
+
+  tr-engine:
+    image: ghcr.io/lumenprima/tr-engine:latest
+    # build: /path/to/tr-engine
+    container_name: tr-engine
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-trengine}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-trengine}?sslmode=disable
+      AUDIO_DIR: /data/audio
+      TZ: ${TZ:-UTC}
+    volumes:
+      - audio:/data/audio
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+
+  tr-dashboard:
+    image: ghcr.io/lumenprima/tr-dashboard:latest
+    # build: /path/to/tr-dashboard
+    container_name: tr-dashboard
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-UTC}
+    depends_on:
+      - tr-engine
+    networks:
+      - frontend
+
+volumes:
+  pgdata:
+  audio:
+  caddy_data:
+  caddy_config:
+
+networks:
+  frontend:
+    driver: bridge
+  backend:
+    driver: bridge

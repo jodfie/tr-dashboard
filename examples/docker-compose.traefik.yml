@@ -1,0 +1,97 @@
+# Full stack with Traefik reverse proxy.
+#
+# Traefik handles path-based routing:
+#   /api/*, /audio/*, /health/*  →  tr-engine:8080
+#   everything else              →  tr-dashboard:3000
+#
+# Prerequisites:
+#   - External Docker network "proxy" (shared with Traefik)
+#   - Traefik configured with Docker provider and a cert resolver
+#
+# Quick start:
+#   docker network create proxy   (if it doesn't exist)
+#   cp .env.example .env          (edit with your values)
+#   docker compose -f examples/docker-compose.traefik.yml up -d
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: tr-engine-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-trengine}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-trengine}
+      TZ: ${TZ:-UTC}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-trengine}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - backend
+
+  tr-engine:
+    image: ghcr.io/lumenprima/tr-engine:latest
+    # build: /path/to/tr-engine
+    container_name: tr-engine
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-trengine}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-trengine}?sslmode=disable
+      AUDIO_DIR: /data/audio
+      TZ: ${TZ:-UTC}
+    volumes:
+      - audio:/data/audio
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+      - proxy
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: "proxy"
+      # Direct API access (optional — remove if you don't need a separate API hostname)
+      traefik.http.routers.tr-engine.rule: "Host(`${ENGINE_HOST:-api.example.com}`)"
+      traefik.http.routers.tr-engine.entrypoints: "websecure"
+      traefik.http.routers.tr-engine.tls.certresolver: "${CERT_RESOLVER:-letsencrypt}"
+      traefik.http.services.tr-engine.loadbalancer.server.port: "8080"
+      # Dashboard API proxy — route /api, /audio, /health on dashboard host to tr-engine
+      traefik.http.routers.tr-dashboard-api.rule: "Host(`${DASHBOARD_HOST:-dashboard.example.com}`) && (PathPrefix(`/api`) || PathPrefix(`/audio`) || PathPrefix(`/health`))"
+      traefik.http.routers.tr-dashboard-api.entrypoints: "websecure"
+      traefik.http.routers.tr-dashboard-api.tls.certresolver: "${CERT_RESOLVER:-letsencrypt}"
+      traefik.http.routers.tr-dashboard-api.service: "tr-engine"
+      traefik.http.routers.tr-dashboard-api.priority: "10"
+
+  tr-dashboard:
+    image: ghcr.io/lumenprima/tr-dashboard:latest
+    # build: /path/to/tr-dashboard
+    container_name: tr-dashboard
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-UTC}
+    depends_on:
+      - tr-engine
+    networks:
+      - backend
+      - proxy
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: "proxy"
+      traefik.http.routers.tr-dashboard.rule: "Host(`${DASHBOARD_HOST:-dashboard.example.com}`)"
+      traefik.http.routers.tr-dashboard.entrypoints: "websecure"
+      traefik.http.routers.tr-dashboard.tls.certresolver: "${CERT_RESOLVER:-letsencrypt}"
+      traefik.http.routers.tr-dashboard.priority: "1"
+      traefik.http.services.tr-dashboard.loadbalancer.server.port: "3000"
+
+volumes:
+  pgdata:
+  audio:
+
+networks:
+  backend:
+    driver: bridge
+  proxy:
+    external: true
