@@ -13,6 +13,8 @@ import { KEYBOARD_SHORTCUTS } from '@/lib/constants'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useFaviconStatus } from '@/hooks/useFaviconStatus'
 import { useEmergencyNotifications } from '@/hooks/useEmergencyNotifications'
+import { PWAUpdateBanner } from './PWAUpdateBanner'
+import { OfflineBanner } from './OfflineBanner'
 
 export function MainLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -126,7 +128,9 @@ export function MainLayout() {
   }, { enabled: commandOpen || goToMenuOpen })
 
   return (
-    <div className="flex h-screen flex-col bg-background">
+    <div className="flex h-screen flex-col bg-background safe-area-top">
+      <PWAUpdateBanner />
+      <OfflineBanner />
       <Header onToggleSidebar={toggleSidebar} onOpenCommand={openCommand} />
 
       <div className="flex flex-1 overflow-hidden">
@@ -136,7 +140,9 @@ export function MainLayout() {
           <div className="flex-1 overflow-auto p-4">
             <Outlet />
           </div>
-          <AudioPlayer />
+          <div className="safe-area-bottom">
+            <AudioPlayer />
+          </div>
         </main>
       </div>
 

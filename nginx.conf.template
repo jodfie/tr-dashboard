@@ -58,6 +58,30 @@ server {
         proxy_set_header Host $host;
     }
 
+    # Service worker — must never be cached by the browser
+    location = /sw.js {
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        try_files $uri =404;
+    }
+
+    # Web app manifest
+    location = /manifest.webmanifest {
+        add_header Cache-Control "public, max-age=3600";
+        try_files $uri =404;
+    }
+
+    # Vite hashed assets — immutable
+    location /assets/ {
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        try_files $uri =404;
+    }
+
+    # Icons and static images
+    location ~* \.(png|svg|ico)$ {
+        add_header Cache-Control "public, max-age=86400";
+        try_files $uri =404;
+    }
+
     # SPA fallback - serve index.html for all other routes
     location / {
         try_files $uri $uri/ /index.html;

@@ -7,6 +7,7 @@ import { TransmissionTimeline, TransmissionLegend } from './TransmissionTimeline
 import { useAudioStore, selectIsPlaying, selectIsBlocked, selectRetryCount } from '@/stores/useAudioStore'
 import { cn, formatDuration, getTalkgroupDisplayName } from '@/lib/utils'
 import { KEYBOARD_SHORTCUTS, AUDIO } from '@/lib/constants'
+import { useMediaSession } from '@/hooks/useMediaSession'
 
 export function AudioPlayer() {
   const audioRef = useRef<HTMLAudioElement>(null)
@@ -47,6 +48,8 @@ export function AudioPlayer() {
   const isPlaying = useAudioStore(selectIsPlaying)
   const isBlocked = useAudioStore(selectIsBlocked)
   const retryCount = useAudioStore(selectRetryCount)
+
+  useMediaSession(audioRef)
 
   // Attempt to play audio, handling autoplay restrictions
   const attemptPlay = useCallback(async () => {
