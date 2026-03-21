@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.2 (2026-03-21)
+
+### Chores
+
+- **Org migration:** Moved repository from `lumenprima` to `trunk-reporter` GitHub org. Updated all references in README, docker-compose, LICENSE, and git remote.
+- **CI/CD:** Added step to set GHCR package visibility to public after Docker image push, preventing new org packages from defaulting to private.
+
 ## 0.9.1 (2026-03-02)
 
 ### Features
