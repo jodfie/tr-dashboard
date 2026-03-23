@@ -17,18 +17,21 @@ export function useEmergencyNotifications() {
 
       seenIds.current.add(callId)
 
+      const notificationOptions = {
+        body: `${call.tg_alpha_tag || `TG ${call.tgid}`} — ${call.system_name || `System ${call.system_id}`}`,
+        tag: `emergency-${callId}`,
+        icon: '/pwa-192x192.png',
+        badge: '/pwa-192x192.png',
+        vibrate: [200, 100, 200],
+        requireInteraction: true,
+      } satisfies NotificationOptions & { vibrate: number[] }
+
       if (Notification.permission === 'granted') {
-        new Notification('Emergency Call', {
-          body: `${call.tg_alpha_tag || `TG ${call.tgid}`} — ${call.system_name || `System ${call.system_id}`}`,
-          tag: `emergency-${callId}`,
-        })
+        new Notification('Emergency Call', notificationOptions)
       } else if (Notification.permission === 'default') {
         Notification.requestPermission().then((perm) => {
           if (perm === 'granted') {
-            new Notification('Emergency Call', {
-              body: `${call.tg_alpha_tag || `TG ${call.tgid}`} — ${call.system_name || `System ${call.system_id}`}`,
-              tag: `emergency-${callId}`,
-            })
+            new Notification('Emergency Call', notificationOptions)
           }
         })
       }

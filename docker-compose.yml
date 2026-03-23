@@ -1,33 +1,9 @@
+# Minimal — direct port access, no reverse proxy.
+# You must route /api, /audio, /health to tr-engine yourself.
 services:
   tr-dashboard:
     image: ghcr.io/trunk-reporter/tr-dashboard:latest
-    # Or build from source:
     # build: .
+    restart: unless-stopped
     ports:
-      - "80:80"
-    environment:
-      # Required: host:port of your tr-engine instance.
-      # Use the container name when in the same Docker network (e.g. tr-engine:8080).
-      # Use the host IP when running standalone (e.g. 10.0.0.10:8080).
-      - TR_ENGINE_URL=tr-engine:8080
-      # Optional: Bearer token for tr-engine authentication.
-      # Only set this if AUTH_TOKEN is configured on your tr-engine instance.
-      # Leave commented out (or omit entirely) for instances without auth.
-      #- TR_AUTH_TOKEN=your-token
-
-    ## Automatic HTTPS with Let's Encrypt:
-    ## Set SITE_ADDRESS to your domain, expose port 443,
-    ## and add a volume for Caddy's certificate storage.
-    #
-    # ports:
-    #   - "80:80"
-    #   - "443:443"
-    # environment:
-    #   - SITE_ADDRESS=dashboard.example.com
-    #   - TR_ENGINE_URL=tr-engine:8080
-    #   - TR_AUTH_TOKEN=your-token
-    # volumes:
-    #   - caddy_data:/data
-
-# volumes:
-#   caddy_data:
+      - "3000:3000"

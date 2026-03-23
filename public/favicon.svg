@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="64" fill="#0f172a"/>
+  <g transform="translate(256,256)">
+    <!-- Antenna mast -->
+    <rect x="-8" y="-160" width="16" height="200" rx="4" fill="#f59e0b"/>
+    <!-- Antenna tip -->
+    <circle cx="0" cy="-170" r="14" fill="#f59e0b"/>
+    <!-- Radio waves - left -->
+    <path d="M-50,-120 A70,70 0 0,0 -50,-20" fill="none" stroke="#f59e0b" stroke-width="10" stroke-linecap="round" opacity="0.9"/>
+    <path d="M-90,-140 A110,110 0 0,0 -90,0" fill="none" stroke="#f59e0b" stroke-width="10" stroke-linecap="round" opacity="0.6"/>
+    <path d="M-130,-160 A150,150 0 0,0 -130,20" fill="none" stroke="#f59e0b" stroke-width="10" stroke-linecap="round" opacity="0.3"/>
+    <!-- Radio waves - right -->
+    <path d="M50,-120 A70,70 0 0,1 50,-20" fill="none" stroke="#f59e0b" stroke-width="10" stroke-linecap="round" opacity="0.9"/>
+    <path d="M90,-140 A110,110 0 0,1 90,0" fill="none" stroke="#f59e0b" stroke-width="10" stroke-linecap="round" opacity="0.6"/>
+    <path d="M130,-160 A150,150 0 0,1 130,20" fill="none" stroke="#f59e0b" stroke-width="10" stroke-linecap="round" opacity="0.3"/>
+    <!-- Radio body -->
+    <rect x="-60" y="40" width="120" height="160" rx="12" fill="#f59e0b"/>
+    <!-- Speaker grille lines -->
+    <line x1="-35" y1="70" x2="35" y2="70" stroke="#0f172a" stroke-width="6" stroke-linecap="round"/>
+    <line x1="-35" y1="90" x2="35" y2="90" stroke="#0f172a" stroke-width="6" stroke-linecap="round"/>
+    <line x1="-35" y1="110" x2="35" y2="110" stroke="#0f172a" stroke-width="6" stroke-linecap="round"/>
+    <!-- PTT button -->
+    <rect x="-25" y="130" width="50" height="50" rx="8" fill="#0f172a" opacity="0.3"/>
+  </g>
+</svg>

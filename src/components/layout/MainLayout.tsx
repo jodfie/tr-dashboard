@@ -13,9 +13,12 @@ import { KEYBOARD_SHORTCUTS } from '@/lib/constants'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useFaviconStatus } from '@/hooks/useFaviconStatus'
 import { useEmergencyNotifications } from '@/hooks/useEmergencyNotifications'
+import { PWAUpdateBanner } from './PWAUpdateBanner'
+import { OfflineBanner } from './OfflineBanner'
 
 export function MainLayout() {
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
   const [commandOpen, setCommandOpen] = useState(false)
   const [goToMenuOpen, setGoToMenuOpen] = useState(false)
   const navigate = useNavigate()
@@ -46,7 +49,11 @@ export function MainLayout() {
   }, [checkForUpdate])
 
   const toggleSidebar = useCallback(() => {
-    setSidebarCollapsed((prev) => !prev)
+    if (window.innerWidth < 768) {
+      setSidebarOpen((prev) => !prev)
+    } else {
+      setSidebarCollapsed((prev) => !prev)
+    }
   }, [])
 
   const openCommand = useCallback(() => {
@@ -126,17 +133,37 @@ export function MainLayout() {
   }, { enabled: commandOpen || goToMenuOpen })
 
   return (
-    <div className="flex h-screen flex-col bg-background">
+    <div className="flex h-screen flex-col bg-background safe-area-top">
+      <PWAUpdateBanner />
+      <OfflineBanner />
       <Header onToggleSidebar={toggleSidebar} onOpenCommand={openCommand} />
 
       <div className="flex flex-1 overflow-hidden">
-        <Sidebar collapsed={sidebarCollapsed} />
+        {/* Mobile sidebar overlay */}
+        {sidebarOpen && (
+          <div
+            className="fixed inset-0 z-40 bg-black/50 md:hidden"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
+        {/* Desktop sidebar */}
+        <div className="hidden md:block">
+          <Sidebar collapsed={sidebarCollapsed} />
+        </div>
+        {/* Mobile sidebar — always expanded */}
+        {sidebarOpen && (
+          <div className="fixed inset-y-0 left-0 z-50 md:hidden">
+            <Sidebar collapsed={false} onNavigate={() => setSidebarOpen(false)} />
+          </div>
+        )}
 
         <main className="flex flex-1 flex-col overflow-hidden">
-          <div className="flex-1 overflow-auto p-4">
+          <div className="flex-1 overflow-auto p-2 md:p-4">
             <Outlet />
           </div>
-          <AudioPlayer />
+          <div className="safe-area-bottom">
+            <AudioPlayer />
+          </div>
         </main>
       </div>
 

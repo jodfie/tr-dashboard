@@ -34,7 +34,7 @@ import type {
   UnitPatch,
 } from './types'
 
-import { useAuthStore } from '@/stores/useAuthStore'
+import { useAuthStore, type AuthUser } from '@/stores/useAuthStore'
 
 const API_BASE = '/api/v1'
 const WRITE_METHODS = new Set(['POST', 'PATCH', 'PUT', 'DELETE'])
@@ -50,6 +50,23 @@ class ApiError extends Error {
   }
 }
 
+// Decode JWT expiry without a library — just base64-decode the payload
+function isTokenExpiringSoon(token: string, thresholdMs = 5 * 60 * 1000): boolean {
+  try {
+    const payload = token.split('.')[1]
+    if (!payload) return false
+    const decoded = JSON.parse(atob(payload))
+    if (!decoded.exp) return false
+    return decoded.exp * 1000 - Date.now() < thresholdMs
+  } catch {
+    return false
+  }
+}
+
+// Flag to prevent infinite refresh loops
+let isRefreshing = false
+let refreshPromise: Promise<boolean> | null = null
+
 async function request<T>(
   endpoint: string,
   options?: RequestInit
@@ -59,13 +76,22 @@ async function request<T>(
     'Content-Type': 'application/json',
   }
 
-  // Inject write token for mutating requests
-  const method = (options?.method || 'GET').toUpperCase()
-  if (WRITE_METHODS.has(method)) {
-    const writeToken = useAuthStore.getState().writeToken
-    if (writeToken) {
-      headers['Authorization'] = `Bearer ${writeToken}`
+  // Proactively refresh token if it expires within 5 minutes
+  let { accessToken, writeToken } = useAuthStore.getState()
+  if (accessToken && isTokenExpiringSoon(accessToken)) {
+    const refreshed = await attemptRefresh()
+    if (refreshed) {
+      accessToken = useAuthStore.getState().accessToken
     }
+  }
+
+  const method = (options?.method || 'GET').toUpperCase()
+
+  if (accessToken) {
+    headers['Authorization'] = `Bearer ${accessToken}`
+  } else if (WRITE_METHODS.has(method) && writeToken) {
+    // Fall back to legacy write token for mutations
+    headers['Authorization'] = `Bearer ${writeToken}`
   }
 
   const response = await fetch(url, {
@@ -75,6 +101,32 @@ async function request<T>(
       ...options?.headers,
     },
   })
+
+  // Handle 401: attempt token refresh, retry once
+  if (response.status === 401 && accessToken && !isRefreshing) {
+    const refreshed = await attemptRefresh()
+    if (refreshed) {
+      // Retry the original request with new token
+      const newToken = useAuthStore.getState().accessToken
+      const retryHeaders: Record<string, string> = { ...headers, ...(options?.headers as Record<string, string>) }
+      if (newToken) {
+        retryHeaders['Authorization'] = `Bearer ${newToken}`
+      }
+      const retryResponse = await fetch(url, {
+        ...options,
+        headers: retryHeaders,
+      })
+      if (!retryResponse.ok) {
+        let data: unknown
+        try { data = await retryResponse.json() } catch { /* ignore */ }
+        throw new ApiError(retryResponse.status, `API error: ${retryResponse.statusText}`, data)
+      }
+      return retryResponse.json()
+    }
+    // Refresh failed — clear auth and let RequireAuth handle the redirect
+    useAuthStore.getState().clearAuth()
+    throw new ApiError(401, 'session expired')
+  }
 
   if (!response.ok) {
     let data: unknown
@@ -98,6 +150,80 @@ function buildQueryString(params: object): string {
   }
   const query = searchParams.toString()
   return query ? `?${query}` : ''
+}
+
+// =============================================================================
+// Auth
+// =============================================================================
+
+export async function login(username: string, password: string): Promise<{ access_token: string; user: AuthUser }> {
+  const response = await fetch(`${API_BASE}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ username, password }),
+  })
+  if (!response.ok) {
+    let data: unknown
+    try { data = await response.json() } catch { /* ignore */ }
+    throw new ApiError(response.status, `Login failed: ${response.statusText}`, data)
+  }
+  return response.json()
+}
+
+export async function refreshAuth(): Promise<{ access_token: string; user: AuthUser } | null> {
+  try {
+    const response = await fetch(`${API_BASE}/auth/refresh`, {
+      method: 'POST',
+      credentials: 'include',
+    })
+    if (!response.ok) {
+      // Expected statuses: session expired / revoked / not found
+      if (response.status === 401 || response.status === 403 || response.status === 404) {
+        return null
+      }
+      // Unexpected server error — log it
+      console.error(`refreshAuth: unexpected ${response.status} ${response.statusText}`)
+      return null
+    }
+    return response.json()
+  } catch (err) {
+    // Network error (offline, DNS failure, etc.)
+    console.error('refreshAuth: network error', err)
+    return null
+  }
+}
+
+export async function logoutApi(): Promise<void> {
+  try {
+    await fetch(`${API_BASE}/auth/logout`, {
+      method: 'POST',
+      credentials: 'include',
+    })
+  } catch {
+    // ignore — we're clearing local state regardless
+  }
+}
+
+async function attemptRefresh(): Promise<boolean> {
+  if (refreshPromise) return refreshPromise
+
+  isRefreshing = true
+  refreshPromise = (async () => {
+    const result = await refreshAuth()
+    if (result) {
+      useAuthStore.getState().setAuth(result.access_token, result.user)
+      return true
+    }
+    return false
+  })()
+
+  try {
+    return await refreshPromise
+  } finally {
+    isRefreshing = false
+    refreshPromise = null
+  }
 }
 
 // =============================================================================
@@ -231,8 +357,14 @@ export async function importTalkgroupDirectory(
     ? `system_id=${systemIdOrName}`
     : `system_name=${encodeURIComponent(systemIdOrName)}`
   const url = `${API_BASE}/talkgroup-directory/import?${param}`
+  const headers: Record<string, string> = {}
+  const { accessToken } = useAuthStore.getState()
+  if (accessToken) {
+    headers['Authorization'] = `Bearer ${accessToken}`
+  }
   const response = await fetch(url, {
     method: 'POST',
+    headers,
     body: formData,
   })
   if (!response.ok) {
@@ -376,8 +508,18 @@ export async function getCall(id: number): Promise<Call> {
   return request(`/calls/${id}`)
 }
 
+// Security tradeoff: <audio> elements cannot send Authorization headers, so
+// we pass the JWT as a query parameter. This exposes the token in server logs,
+// browser history, and Referrer headers. Mitigated by: read-only scope and
+// 1-hour JWT expiry. Long-term: consider opaque blob URLs or a server-side
+// audio proxy to avoid token-in-URL entirely.
 export function getCallAudioUrl(id: number): string {
-  return `${API_BASE}/calls/${id}/audio`
+  const { accessToken } = useAuthStore.getState()
+  const base = `${API_BASE}/calls/${id}/audio`
+  if (accessToken) {
+    return `${base}?token=${encodeURIComponent(accessToken)}`
+  }
+  return base
 }
 
 export async function getCallTransmissions(
@@ -525,6 +667,41 @@ export async function mergeSystems(req: SystemMergeRequest): Promise<SystemMerge
     method: 'POST',
     body: JSON.stringify(req),
   })
+}
+
+// =============================================================================
+// Users (admin)
+// =============================================================================
+
+export interface UserResponse {
+  id: number
+  username: string
+  role: string
+  enabled: boolean
+  created_at: string
+  updated_at: string
+}
+
+export async function getUsers(): Promise<{ users: UserResponse[]; total: number }> {
+  return request('/users')
+}
+
+export async function createUser(data: { username: string; password: string; role: string }): Promise<UserResponse> {
+  return request('/users', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+}
+
+export async function updateUser(id: number, data: { role?: string; password?: string; enabled?: boolean }): Promise<UserResponse> {
+  return request(`/users/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  })
+}
+
+export async function deleteUser(id: number): Promise<void> {
+  await request(`/users/${id}`, { method: 'DELETE' })
 }
 
 // =============================================================================

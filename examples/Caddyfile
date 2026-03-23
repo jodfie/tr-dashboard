@@ -1,0 +1,21 @@
+{$DASHBOARD_HOST:dashboard.example.com} {
+	# API, audio, and health requests → tr-engine
+	handle /api/* {
+		reverse_proxy tr-engine:8080 {
+			flush_interval -1
+		}
+	}
+
+	handle /audio/* {
+		reverse_proxy tr-engine:8080
+	}
+
+	handle /health/* {
+		reverse_proxy tr-engine:8080
+	}
+
+	# Everything else → tr-dashboard static files
+	handle {
+		reverse_proxy tr-dashboard:3000
+	}
+}
