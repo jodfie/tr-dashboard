@@ -57,21 +57,21 @@ export const useAuthStore = create<AuthState>()(
       name: 'tr-dashboard-auth',
       partialize: (state) => ({
         writeToken: state.writeToken,
-        user: state.user,
+        // user is NOT persisted — role could go stale between sessions.
+        // On reload, RequireAuth calls refreshAuth() which restores both
+        // the access token and a fresh user object from the backend.
       }),
-      // Migrate from old store shape (writeToken only)
+      // Migrate from old store shape: discard any persisted accessToken
+      // and user to prevent stale JWT / stale role on upgrade.
       migrate: (persisted: any, version: number) => {
-        if (version === 0 && persisted && typeof persisted === 'object') {
+        if (version <= 1 && persisted && typeof persisted === 'object') {
           return {
-            ...persisted,
-            accessToken: persisted.accessToken || '',
-            user: persisted.user || null,
-            isAuthenticated: persisted.isAuthenticated || false,
+            writeToken: persisted.writeToken || '',
           }
         }
         return persisted as AuthState
       },
-      version: 1,
+      version: 2,
     }
   )
 )
