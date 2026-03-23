@@ -15,6 +15,7 @@ import {
 
 interface SidebarProps {
   collapsed: boolean
+  onNavigate?: () => void
 }
 
 const navItems = [
@@ -194,7 +195,7 @@ const usersNavItem = {
   ),
 }
 
-export function Sidebar({ collapsed }: SidebarProps) {
+export function Sidebar({ collapsed, onNavigate }: SidebarProps) {
   const userRole = useAuthStore((s) => s.user?.role)
   const decodeRates = useRealtimeStore((s) => s.decodeRates)
   const activeCalls = useRealtimeStore((s) => s.activeCalls)
@@ -220,12 +221,13 @@ export function Sidebar({ collapsed }: SidebarProps) {
 
   if (collapsed) {
     return (
-      <aside className="flex w-16 flex-col items-center border-r border-border bg-card py-4">
+      <aside className="hidden md:flex w-16 flex-col items-center border-r border-border bg-card py-4">
         <nav className="flex flex-col gap-2">
           {allNavItems.map((item) => (
             <NavLink
               key={item.path}
               to={item.path}
+              onClick={onNavigate}
               className={({ isActive }) =>
                 cn(
                   'flex h-10 w-10 items-center justify-center rounded-lg transition-colors',
@@ -245,12 +247,13 @@ export function Sidebar({ collapsed }: SidebarProps) {
   }
 
   return (
-    <aside className="flex w-60 flex-col border-r border-border bg-card">
+    <aside className="flex w-60 flex-col border-r border-border bg-card h-full">
       <nav className="flex flex-col gap-1 p-3">
         {allNavItems.map((item) => (
           <NavLink
             key={item.path}
             to={item.path}
+            onClick={onNavigate}
             className={({ isActive }) =>
               cn(
                 'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',

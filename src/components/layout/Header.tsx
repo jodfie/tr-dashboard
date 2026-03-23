@@ -84,8 +84,9 @@ export function Header({ onToggleSidebar, onOpenCommand }: HeaderProps) {
           className="flex items-center gap-2 text-lg font-semibold tracking-tight"
         >
           <span className="text-primary">◉</span>
-          <span>tr-dashboard</span>
-          <span className="text-xs font-normal text-muted-foreground">
+          <span className="hidden sm:inline">tr-dashboard</span>
+          <span className="sm:hidden text-primary text-sm">TR</span>
+          <span className="hidden md:inline text-xs font-normal text-muted-foreground">
             v{APP_VERSION}
             {apiVersion && ` / api ${apiVersion}`}
           </span>
@@ -105,7 +106,7 @@ export function Header({ onToggleSidebar, onOpenCommand }: HeaderProps) {
         </button>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-1.5 sm:gap-3">
         {/* Monitor toggle */}
         <Button
           variant={isMonitoring ? 'default' : 'outline'}
@@ -113,7 +114,7 @@ export function Header({ onToggleSidebar, onOpenCommand }: HeaderProps) {
           onClick={toggleMonitoring}
           disabled={monitoredCount === 0}
           className={cn(
-            'gap-2',
+            'gap-1 sm:gap-2',
             isMonitoring && 'bg-live hover:bg-live/90'
           )}
           title={monitoredCount === 0 ? 'No talkgroups selected for monitoring' : undefined}
@@ -145,7 +146,7 @@ export function Header({ onToggleSidebar, onOpenCommand }: HeaderProps) {
 
         {/* Queue indicator */}
         {queue.length > 0 && (
-          <Badge variant="secondary" className="tabular-nums">
+          <Badge variant="secondary" className="hidden sm:inline-flex tabular-nums">
             {queue.length} queued
           </Badge>
         )}
@@ -199,7 +200,7 @@ export function Header({ onToggleSidebar, onOpenCommand }: HeaderProps) {
             }
           >
             <span
-              className={`mr-1.5 inline-block h-2 w-2 rounded-full ${
+              className={`mr-0 sm:mr-1.5 inline-block h-2 w-2 rounded-full ${
                 connectionStatus === 'connected'
                   ? 'bg-success'
                   : connectionStatus === 'connecting'
@@ -207,11 +208,13 @@ export function Header({ onToggleSidebar, onOpenCommand }: HeaderProps) {
                     : 'bg-destructive'
               }`}
             />
-            {connectionStatus === 'connected'
-              ? 'Connected'
-              : connectionStatus === 'connecting'
-                ? 'Connecting'
-                : 'Disconnected'}
+            <span className="hidden sm:inline">
+              {connectionStatus === 'connected'
+                ? 'Connected'
+                : connectionStatus === 'connecting'
+                  ? 'Connecting'
+                  : 'Disconnected'}
+            </span>
           </Badge>
 
           {user && (

@@ -200,7 +200,13 @@
     padding-top: env(safe-area-inset-top);
   }
   .safe-area-bottom {
-    padding-bottom: env(safe-area-inset-bottom);
+    padding-bottom: max(env(safe-area-inset-bottom), 1rem);
+  }
+
+  @media (min-width: 768px) {
+    .safe-area-bottom {
+      padding-bottom: env(safe-area-inset-bottom);
+    }
   }
 
   .scrollbar-thin {

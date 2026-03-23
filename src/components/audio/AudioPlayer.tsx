@@ -72,18 +72,39 @@ export function AudioPlayer() {
     }
   }, [onAutoplayBlocked, onError])
 
+  // Unlock iOS audio session — puts audio in "playback" category
+  // which overrides the hardware silent switch
+  const unlockIOSAudio = useCallback(() => {
+    const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+    if (!AudioCtx) return
+    const ctx = new AudioCtx()
+    if (ctx.state === 'suspended') {
+      ctx.resume().then(() => ctx.close()).catch(() => ctx.close())
+    } else {
+      ctx.close()
+    }
+  }, [])
+
   // Handle user click to unlock audio
   const handleUnlockClick = useCallback(() => {
     const audio = audioRef.current
     if (!audio || !currentCall) return
 
-    // Ensure audio is loaded
-    if (audio.src !== currentCall.audioUrl) {
+    // Unlock iOS silent mode on first user gesture
+    unlockIOSAudio()
+
+    // Set src only if truly empty (avoid reload — breaks iOS gesture chain)
+    if (!audio.src || audio.src === window.location.href) {
       audio.src = currentCall.audioUrl
       audio.load()
+      // Wait for loadeddata then play within gesture context
+      audio.addEventListener('loadeddata', () => {
+        audio.play().catch(console.error)
+      }, { once: true })
+      return
     }
 
-    // User gesture - attempt play
+    // Audio already loaded — play immediately (keeps iOS gesture context)
     audio.play()
       .then(() => {
         // onPlay event will update state to 'playing'
@@ -91,7 +112,7 @@ export function AudioPlayer() {
       .catch((err) => {
         console.error('Audio unlock failed:', err)
       })
-  }, [currentCall])
+  }, [currentCall, unlockIOSAudio])
 
   // Load audio when currentCall changes
   useEffect(() => {
@@ -370,6 +391,7 @@ export function AudioPlayer() {
       <div className="border-t border-border bg-card card-glass px-4 py-3">
         <audio
           ref={audioRef}
+          playsInline
           onCanPlay={handleCanPlay}
           onTimeUpdate={handleTimeUpdate}
           onEnded={handleEnded}
@@ -421,9 +443,9 @@ export function AudioPlayer() {
         onPause={handlePause}
       />
 
-      <div className="flex items-center gap-3">
+      <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
         {/* Now playing indicator + call info — left side */}
-        <div className="flex items-center gap-3 min-w-[180px]">
+        <div className="flex items-center gap-3 min-w-0 md:min-w-[180px]">
           {/* Play/pause — prominent center button */}
           <Button
             variant={isPlaying ? "default" : "ghost"}
@@ -473,7 +495,7 @@ export function AudioPlayer() {
         <Button
           variant="ghost"
           size="icon"
-          className="h-8 w-8 shrink-0"
+          className="hidden md:inline-flex h-8 w-8 shrink-0"
           onClick={() => {
             playAttemptedRef.current = false
             skipPrevious()
@@ -520,7 +542,7 @@ export function AudioPlayer() {
         <Button
           variant="ghost"
           size="icon"
-          className="h-8 w-8 shrink-0"
+          className="hidden md:inline-flex h-8 w-8 shrink-0"
           onClick={() => {
             playAttemptedRef.current = false
             skipNext()
@@ -534,7 +556,7 @@ export function AudioPlayer() {
         </Button>
 
         {/* Volume controls */}
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="hidden md:flex items-center gap-1.5 shrink-0">
           <Button
             variant="ghost"
             size="icon"
@@ -572,7 +594,7 @@ export function AudioPlayer() {
         </div>
 
         {/* Queue + history — right side compact group */}
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="hidden md:flex items-center gap-2 shrink-0">
           {queue.length > 0 && (
             <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] text-primary font-medium tabular-nums">
               {queue.length} queued
@@ -610,7 +632,7 @@ export function AudioPlayer() {
 
       {/* Transmission legend - unit names below timeline */}
       {transmissions && transmissions.length > 0 && (
-        <div className="mt-1.5 flex items-center gap-4 pl-[196px]">
+        <div className="hidden md:flex mt-1.5 items-center gap-4 pl-[196px]">
           <TransmissionLegend transmissions={transmissions} unitTags={unitTags} />
         </div>
       )}
