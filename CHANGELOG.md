@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.0-pre4 (2026-03-23)
+
+### Features
+
+- **First-time setup flow** — Login page auto-detects when no users exist and shows a "First-Time Setup" form to create the initial admin account. Calls the `POST /auth/setup` endpoint, validates password length and confirmation, and auto-logs in on success. Gracefully switches to login mode if setup is already completed.
+
 ## 1.0.0-pre2 (2026-03-22)
 
 ### Bug Fixes

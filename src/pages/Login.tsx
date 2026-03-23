@@ -1,20 +1,30 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAuthStore } from '@/stores/useAuthStore'
-import { login } from '@/api/client'
+import { login, setupFirstUser, checkNeedsSetup } from '@/api/client'
 
 export default function Login() {
   const navigate = useNavigate()
   const setAuth = useAuthStore((s) => s.setAuth)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [setupMode, setSetupMode] = useState(false)
+  const [checkingSetup, setCheckingSetup] = useState(true)
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  useEffect(() => {
+    checkNeedsSetup().then((needs) => {
+      setSetupMode(needs)
+      setCheckingSetup(false)
+    })
+  }, [])
+
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!username.trim() || !password) return
 
@@ -33,6 +43,51 @@ export default function Login() {
     }
   }
 
+  const handleSetup = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!username.trim() || !password) return
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match')
+      return
+    }
+
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters')
+      return
+    }
+
+    setError('')
+    setLoading(true)
+
+    try {
+      const result = await setupFirstUser(username.trim(), password)
+      setAuth(result.access_token, result.user)
+      navigate('/', { replace: true })
+    } catch (err: any) {
+      if (err?.status === 409) {
+        // Setup already completed — switch to login mode
+        setSetupMode(false)
+        setError('Setup already completed. Please sign in.')
+        setPassword('')
+        setConfirmPassword('')
+      } else {
+        const msg = err?.data?.error || err?.message || 'Setup failed'
+        setError(msg)
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (checkingSetup) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="text-muted-foreground">Loading...</div>
+      </div>
+    )
+  }
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <Card className="w-full max-w-sm">
@@ -41,11 +96,20 @@ export default function Login() {
             <span className="text-primary text-2xl">&#9673;</span>
             <span className="text-xl font-semibold">tr-dashboard</span>
           </div>
-          <CardTitle>Sign In</CardTitle>
-          <CardDescription>Enter your credentials to access the dashboard</CardDescription>
+          {setupMode ? (
+            <>
+              <CardTitle>First-Time Setup</CardTitle>
+              <CardDescription>Create the admin account to get started</CardDescription>
+            </>
+          ) : (
+            <>
+              <CardTitle>Sign In</CardTitle>
+              <CardDescription>Enter your credentials to access the dashboard</CardDescription>
+            </>
+          )}
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={setupMode ? handleSetup : handleLogin} className="space-y-4">
             {error && (
               <div className="rounded-md bg-destructive/10 border border-destructive/20 px-3 py-2 text-sm text-destructive">
                 {error}
@@ -61,7 +125,7 @@ export default function Login() {
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="Username"
-                autoComplete="username"
+                autoComplete={setupMode ? 'off' : 'username'}
                 autoFocus
                 disabled={loading}
               />
@@ -75,17 +139,36 @@ export default function Login() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Password"
-                autoComplete="current-password"
+                placeholder={setupMode ? 'Min 8 characters' : 'Password'}
+                autoComplete={setupMode ? 'new-password' : 'current-password'}
                 disabled={loading}
               />
             </div>
+            {setupMode && (
+              <div className="space-y-2">
+                <label htmlFor="confirm-password" className="text-sm font-medium">
+                  Confirm Password
+                </label>
+                <Input
+                  id="confirm-password"
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Confirm password"
+                  autoComplete="new-password"
+                  disabled={loading}
+                />
+              </div>
+            )}
             <Button
               type="submit"
               className="w-full"
-              disabled={loading || !username.trim() || !password}
+              disabled={loading || !username.trim() || !password || (setupMode && !confirmPassword)}
             >
-              {loading ? 'Signing in...' : 'Sign In'}
+              {loading
+                ? (setupMode ? 'Creating account...' : 'Signing in...')
+                : (setupMode ? 'Create Admin Account' : 'Sign In')
+              }
             </Button>
           </form>
         </CardContent>

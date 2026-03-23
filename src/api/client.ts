@@ -194,6 +194,44 @@ export async function refreshAuth(): Promise<{ access_token: string; user: AuthU
   }
 }
 
+export async function setupFirstUser(username: string, password: string): Promise<{ access_token: string; user: AuthUser }> {
+  const response = await fetch(`${API_BASE}/auth/setup`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ username, password }),
+  })
+  if (!response.ok) {
+    let data: unknown
+    try { data = await response.json() } catch { /* ignore */ }
+    throw new ApiError(response.status, `Setup failed: ${response.statusText}`, data)
+  }
+  return response.json()
+}
+
+export async function checkNeedsSetup(): Promise<boolean> {
+  try {
+    const response = await fetch(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: '', password: '' }),
+    })
+    // If auth endpoint returns 404, auth isn't enabled
+    if (response.status === 404) return false
+    // Check if setup is needed by trying the setup endpoint
+    const setupResponse = await fetch(`${API_BASE}/auth/setup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: '', password: '' }),
+    })
+    // 400 = validation error = setup is available (no users yet)
+    // 409 = setup already completed (users exist)
+    return setupResponse.status === 400
+  } catch {
+    return false
+  }
+}
+
 export async function logoutApi(): Promise<void> {
   try {
     await fetch(`${API_BASE}/auth/logout`, {
