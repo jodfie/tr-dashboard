@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.0.0-pre1 (2026-03-22)
+
+### Breaking Changes
+
+- **Docker image: Caddy replaced with `serve`** — The container now serves static files only on port 3000. You must provide your own reverse proxy (Caddy, Traefik, nginx) to route `/api/*`, `/audio/*`, `/health/*` to tr-engine. `TR_ENGINE_URL`, `TR_AUTH_TOKEN`, and `SITE_ADDRESS` env vars are removed. See README for migration guide and full-stack example configs in `examples/`.
+
+### Features
+
+- **PWA support** — Installable as a Progressive Web App with custom service worker, offline banner, update prompt, and Media Session API for lock screen controls.
+- **JWT auth UI** — Login page, `RequireAuth` route guard with silent token refresh, user management page (admin only), role-based UI.
+- **Updated API types** — Regenerated from latest tr-engine OpenAPI spec. New endpoints: auth, API keys, users, stats/analytics, live audio, transcription backfill, admin maintenance.
+
+### Bug Fixes
+
+- **Auth store hardening** — Access token and user are memory-only (not persisted to localStorage). Stale role window on page reload eliminated. Migration from old store versions discards expired tokens.
+- **SSE disconnect on logout** — SSE manager disconnects cleanly when auth token is cleared instead of reconnecting with empty credentials.
+- **Service worker offline handling** — Fetch handlers include error fallbacks instead of crashing on network failure.
+
 ## 0.9.2 (2026-03-21)
 
 ### Chores

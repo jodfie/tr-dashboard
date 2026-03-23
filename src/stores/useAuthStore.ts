@@ -55,23 +55,23 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'tr-dashboard-auth',
+      // Only persist writeToken. Access token lives in memory only
+      // (restored via refreshAuth on page load). User is also memory-only
+      // to avoid a stale-role window where isAdmin()/canWrite() return
+      // truthy before the refresh validates the session.
       partialize: (state) => ({
         writeToken: state.writeToken,
-        user: state.user,
       }),
-      // Migrate from old store shape (writeToken only)
+      // Migrate from old store shape — discard any persisted auth state
       migrate: (persisted: any, version: number) => {
         if (version === 0 && persisted && typeof persisted === 'object') {
           return {
-            ...persisted,
-            accessToken: persisted.accessToken || '',
-            user: persisted.user || null,
-            isAuthenticated: persisted.isAuthenticated || false,
+            writeToken: persisted.writeToken || '',
           }
         }
         return persisted as AuthState
       },
-      version: 1,
+      version: 2,
     }
   )
 )

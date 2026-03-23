@@ -68,63 +68,65 @@ Full call metadata, signal quality, transcription with word-level timing, and tr
 
 ## Quick Start (Docker)
 
-The easiest way to run tr-dashboard alongside [tr-engine](https://github.com/trunk-reporter/tr-engine). The Docker image uses [Caddy](https://github.com/caddyserver/caddy) to serve static files, reverse proxy API requests to tr-engine, and optionally handle automatic HTTPS.
+The Docker image serves static files only (via [`serve`](https://github.com/vercel/serve) on port 3000). You need a reverse proxy (Caddy, Traefik, nginx) to route API requests to tr-engine. Full-stack example configs are in `examples/`.
 
-### 1. Add to your Docker Compose
+### Architecture
 
-Add this service to your existing `docker-compose.yml` (or use the included one):
-
-```yaml
-services:
-  tr-dashboard:
-    image: ghcr.io/trunk-reporter/tr-dashboard:latest
-    ports:
-      - "80:80"
-    environment:
-      - TR_ENGINE_URL=tr-engine:8000
-      - TR_AUTH_TOKEN=your-token-here
+```
+Browser → Reverse Proxy (Caddy/Traefik/nginx)
+              ├── /api/*, /audio/*, /health/*  →  tr-engine:8080
+              └── everything else              →  tr-dashboard:3000
 ```
 
-### 2. Start it
+### Option A: Full Stack with Caddy (recommended)
+
+The easiest way to get started. Caddy handles TLS automatically.
 
 ```bash
-docker compose up -d
+cp examples/.env.example .env        # edit with your values
+docker compose -f examples/docker-compose.caddy.yml up -d
 ```
 
-Visit `http://your-server` and you're done.
+This starts Caddy, tr-engine, PostgreSQL, and tr-dashboard together. See [`examples/docker-compose.caddy.yml`](examples/docker-compose.caddy.yml) and [`examples/Caddyfile`](examples/Caddyfile).
 
-### Environment Variables
+### Option B: Full Stack with Traefik
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `TR_ENGINE_URL` | `tr-engine:8000` | Address of your tr-engine backend |
-| `TR_AUTH_TOKEN` | *(empty)* | Bearer token for tr-engine API authentication (read access) |
-| `TR_WRITE_TOKEN` | *(empty)* | Write token for editing talkgroups/units (see [Write Access](#write-access)) |
-| `SITE_ADDRESS` | `:80` | Caddy site address — set to a domain for automatic HTTPS |
+If you already run Traefik:
 
-### Automatic HTTPS
+```bash
+cp examples/.env.example .env        # edit with your values
+docker compose -f examples/docker-compose.traefik.yml up -d
+```
 
-To enable automatic Let's Encrypt certificates, set `SITE_ADDRESS` to your domain and expose port 443:
+See [`examples/docker-compose.traefik.yml`](examples/docker-compose.traefik.yml).
+
+### Option C: Dashboard Only
+
+If tr-engine is already running and you have your own reverse proxy:
 
 ```yaml
 services:
   tr-dashboard:
     image: ghcr.io/trunk-reporter/tr-dashboard:latest
     ports:
-      - "80:80"
-      - "443:443"
-    environment:
-      - SITE_ADDRESS=dashboard.example.com
-      - TR_ENGINE_URL=tr-engine:8000
-      - TR_AUTH_TOKEN=your-token-here
-    volumes:
-      - caddy_data:/data
-
-volumes:
-  caddy_data:
+      - "3000:3000"
 ```
 
-Caddy automatically provisions and renews TLS certificates. Ports 80 and 443 must be publicly accessible, and the domain must point to your server.
+Then configure your proxy to route `/api/*`, `/audio/*`, and `/health/*` to tr-engine and everything else to `tr-dashboard:3000`. The key requirement is that `/api/events` (SSE) must have `flush_interval -1` or equivalent to avoid buffering.
+
+### Migrating from v0.9.x (Caddy-based image)
+
+Previous versions bundled Caddy inside the Docker image and accepted `TR_ENGINE_URL`, `TR_AUTH_TOKEN`, and `SITE_ADDRESS` environment variables. Starting with v0.10.0:
+
+| Before (v0.9.x) | After (v0.10.0+) |
+|------------------|-------------------|
+| Caddy bundled in image | Static-only image, bring your own proxy |
+| Port 80/443 | Port 3000 |
+| `TR_ENGINE_URL` env var | Proxy config routes `/api/*` to tr-engine |
+| `TR_AUTH_TOKEN` injected by Caddy | JWT auth via login page, or proxy-injected header |
+| `SITE_ADDRESS` for auto-HTTPS | Configured in your proxy (Caddy/Traefik) |
+
+**To migrate:** Use one of the full-stack examples above (`examples/docker-compose.caddy.yml` for the closest equivalent to the old setup) or add tr-dashboard to your existing proxy config. If you were using `TR_AUTH_TOKEN`, configure your Caddy/nginx to inject the header — see [Reverse proxy setup](#reverse-proxy-setup).
 
 ### Build from Source
 
