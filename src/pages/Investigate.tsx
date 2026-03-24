@@ -6,6 +6,7 @@ import { getCalls, searchTranscriptions } from '@/api/client'
 import type { Call } from '@/api/types'
 import { useAudioStore } from '@/stores/useAudioStore'
 import { Timeline } from '@/components/investigate/Timeline'
+import { DetailPanel } from '@/components/investigate/DetailPanel'
 
 const WINDOW_PRESETS = [5, 15, 30, 60] as const
 
@@ -188,6 +189,7 @@ export default function Investigate() {
         expandedCallId={expandedCallId}
         onCallClick={handleCallClick}
         onCallExpand={handleCallExpand}
+        renderDetailPanel={(call) => <DetailPanel call={call} />}
       />
     </div>
   )
