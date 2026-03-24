@@ -238,6 +238,16 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
             </Command.Item>
 
             <Command.Item
+              value="go-to-investigate"
+              onSelect={() => runCommand(() => navigate('/investigate'))}
+              className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-sm aria-selected:bg-accent"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
+              <span>Go to Investigate</span>
+              <kbd className="ml-auto text-xs text-muted-foreground">g i</kbd>
+            </Command.Item>
+
+            <Command.Item
               value="go-to-settings"
               onSelect={() => runCommand(() => navigate('/settings'))}
               className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-sm aria-selected:bg-accent"

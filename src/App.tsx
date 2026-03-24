@@ -18,6 +18,7 @@ import Recorders from '@/pages/Recorders'
 import SystemDetail from '@/pages/SystemDetail'
 import Login from '@/pages/Login'
 import Users from '@/pages/Users'
+import Investigate from '@/pages/Investigate'
 
 export default function App() {
   return (
@@ -37,6 +38,7 @@ export default function App() {
         <Route path="/systems/:id" element={<SystemDetail />} />
         <Route path="/affiliations" element={<Affiliations />} />
         <Route path="/directory" element={<TalkgroupDirectory />} />
+        <Route path="/investigate" element={<Investigate />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="/users" element={<Users />} />

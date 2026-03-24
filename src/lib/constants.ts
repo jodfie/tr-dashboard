@@ -22,6 +22,7 @@ export const KEYBOARD_SHORTCUTS = {
   GO_TO_AFFILIATIONS: 'g>a',
   GO_TO_DIRECTORY: 'g>r',
   GO_TO_RECORDERS: 'g>e',
+  GO_TO_INVESTIGATE: 'g>i',
   GO_TO_SETTINGS: 'g>s',
   GO_TO_ADMIN: 'g>x',
 } as const
