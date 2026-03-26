@@ -1,3 +1,4 @@
+import { useEffect, useState, useMemo, useCallback } from 'react'
 import { NavLink, Link } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -6,10 +7,12 @@ import { useRealtimeStore } from '@/stores/useRealtimeStore'
 import { useFilterStore } from '@/stores/useFilterStore'
 import { useMonitorStore } from '@/stores/useMonitorStore'
 import { useAuthStore } from '@/stores/useAuthStore'
+import { getTalkgroups } from '@/api/client'
 import {
   formatDecodeRate,
   normalizeDecodeRate,
   parseTalkgroupKey,
+  talkgroupKey,
   getTalkgroupDisplayName,
 } from '@/lib/utils'
 
@@ -218,12 +221,67 @@ export function Sidebar({ collapsed, onNavigate }: SidebarProps) {
   // Recent calls from active calls for talkgroup activity
   const recentActivity = Array.from(activeCalls.values()).slice(0, 10)
 
-  // Display name from composite key
-  const getTgDisplayNameFromKey = (key: string): string => {
+  // Build alpha_tag lookup from active calls (free — already in memory)
+  const activeCallAlphaTags = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const call of activeCalls.values()) {
+      if (call.tg_alpha_tag) {
+        map.set(talkgroupKey(call.system_id, call.tgid), call.tg_alpha_tag)
+      }
+    }
+    return map
+  }, [activeCalls])
+
+  // Fetch alpha_tags from API for favorites/monitored TGs not covered by active calls
+  const [fetchedAlphaTags, setFetchedAlphaTags] = useState<Map<string, string>>(new Map())
+
+  // Collect all keys that need resolution
+  const allTrackedKeys = useMemo(() => {
+    const keys = new Set<string>()
+    for (const key of favoriteTalkgroups) keys.add(key)
+    for (const key of monitoredTalkgroups) keys.add(key)
+    return keys
+  }, [favoriteTalkgroups, monitoredTalkgroups])
+
+  useEffect(() => {
+    if (allTrackedKeys.size === 0) return
+
+    // Find keys we don't already have names for
+    const missing: string[] = []
+    for (const key of allTrackedKeys) {
+      if (!activeCallAlphaTags.has(key) && !fetchedAlphaTags.has(key)) {
+        missing.push(key)
+      }
+    }
+    if (missing.length === 0) return
+
+    // Fetch talkgroups from API (single request, large enough limit)
+    let cancelled = false
+    getTalkgroups({ limit: 1000 }).then((res) => {
+      if (cancelled) return
+      const map = new Map(fetchedAlphaTags)
+      for (const tg of res.talkgroups) {
+        const key = talkgroupKey(tg.system_id, tg.tgid)
+        if (tg.alpha_tag && allTrackedKeys.has(key)) {
+          map.set(key, tg.alpha_tag)
+        }
+      }
+      setFetchedAlphaTags(map)
+    }).catch(() => {
+      // Silently fail — we'll fall back to "TG {number}"
+    })
+
+    return () => { cancelled = true }
+  }, [allTrackedKeys, activeCallAlphaTags]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Resolve display name from composite key using all available sources
+  const getTgDisplayNameFromKey = useCallback((key: string): string => {
     const parsed = parseTalkgroupKey(key)
-    if (parsed) return `TG ${parsed.tgid}`
-    return key
-  }
+    if (!parsed) return key
+    // Check active calls first (most current), then fetched data
+    const name = activeCallAlphaTags.get(key) || fetchedAlphaTags.get(key)
+    return getTalkgroupDisplayName(parsed.tgid, name)
+  }, [activeCallAlphaTags, fetchedAlphaTags])
 
   const allNavItems = userRole === 'admin'
     ? [...navItems, usersNavItem]
