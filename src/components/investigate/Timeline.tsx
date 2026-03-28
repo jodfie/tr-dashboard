@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useRef, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import type { Call } from '@/api/types'
 import { useTalkgroupColors } from '@/stores/useTalkgroupColors'
@@ -21,6 +21,8 @@ interface TimelineProps {
   onCallClick: (call: Call) => void
   onCallExpand: (call: Call) => void
   renderDetailPanel?: (call: Call) => React.ReactNode
+  onPan?: (deltaMs: number) => void
+  onZoom?: (direction: 'in' | 'out') => void
 }
 
 function getTickInterval(windowMinutes: number): number {
@@ -33,12 +35,48 @@ export function Timeline({
   groups, windowStart, windowEnd,
   selectedCallId, expandedCallId,
   onCallClick, onCallExpand, renderDetailPanel,
+  onPan, onZoom,
 }: TimelineProps) {
   const getCachedColor = useTalkgroupColors((s) => s.getCachedColor)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const dragRef = useRef<{ startX: number; startMs: number } | null>(null)
   const startMs = new Date(windowStart).getTime()
   const endMs = new Date(windowEnd).getTime()
   const durationMs = endMs - startMs
   const windowMinutes = durationMs / 60000
+
+  // Wheel to zoom
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    if (!onZoom) return
+    e.preventDefault()
+    onZoom(e.deltaY < 0 ? 'in' : 'out')
+  }, [onZoom])
+
+  // Drag to pan
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (!onPan || !containerRef.current) return
+    // Only initiate drag on the timeline area background, not on call blocks
+    if ((e.target as HTMLElement).closest('[data-call-block]')) return
+    dragRef.current = { startX: e.clientX, startMs }
+    e.preventDefault()
+  }, [onPan, startMs])
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!dragRef.current || !onPan || !containerRef.current) return
+    const rect = containerRef.current.getBoundingClientRect()
+    // Subtract the 180px label column
+    const timelineWidth = rect.width - 180
+    if (timelineWidth <= 0) return
+    const deltaX = e.clientX - dragRef.current.startX
+    const deltaPct = deltaX / timelineWidth
+    const deltaMs = -deltaPct * durationMs
+    dragRef.current.startX = e.clientX
+    onPan(deltaMs)
+  }, [onPan, durationMs])
+
+  const handleMouseUp = useCallback(() => {
+    dragRef.current = null
+  }, [])
 
   // Time axis ticks
   const ticks = useMemo(() => {
@@ -71,7 +109,15 @@ export function Timeline({
   if (groups.length === 0) return null
 
   return (
-    <div className="border border-border/40 rounded-lg overflow-hidden">
+    <div
+      ref={containerRef}
+      className={cn("border border-border/40 rounded-lg overflow-hidden", onPan && "cursor-grab active:cursor-grabbing")}
+      onWheel={handleWheel}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
+    >
       {/* Time axis */}
       <div className="relative h-8 bg-zinc-900/40 border-b border-border/30" style={{ marginLeft: '180px' }}>
         {ticks.map((tick, i) => (

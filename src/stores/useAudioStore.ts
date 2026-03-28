@@ -72,6 +72,7 @@ interface AudioState {
   removeFromQueue: (index: number) => void
   clearQueue: () => void
   setAutoPlay: (enabled: boolean) => void
+  setHistory: (calls: QueuedCall[]) => void
 
   // Actions - called by audio element event handlers
   onLoadStart: () => void
@@ -251,6 +252,8 @@ export const useAudioStore = create<AudioState>((set, get) => ({
   clearQueue: () => set({ queue: [] }),
 
   setAutoPlay: (enabled) => set({ autoPlay: enabled }),
+
+  setHistory: (calls) => set({ history: calls.slice(0, 20) }),
 
   // Audio element event handlers
   onLoadStart: () => {
