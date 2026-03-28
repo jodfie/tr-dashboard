@@ -24,20 +24,26 @@ export function RequireAuth({ children }: RequireAuthProps) {
       if (cancelled) return
       if (result === null) {
         // Refresh failed — could be expired or backend has no JWT auth.
-        // Probe the login endpoint to distinguish.
-        fetch('/api/v1/auth/login', { method: 'OPTIONS' }).then((res) => {
+        // Check auth-init for guest_access, then probe login endpoint as fallback.
+        fetch('/api/v1/auth-init').then((res) => res.ok ? res.json() : null).then((data) => {
           if (cancelled) return
-          if (res.status === 404 || res.status === 405 || res.status === 403) {
-            // Login endpoint doesn't exist or is blocked — backend running in legacy/open mode
+          if (data?.guest_access) {
             setAuthDisabled(true)
-          }
-          setChecking(false)
-        }).catch(() => {
-          if (!cancelled) {
-            // Network error — can't determine auth state.
-            // Don't bypass auth; let the !isAuthenticated check redirect to /login.
             setChecking(false)
+            return
           }
+          // Fallback: probe the login endpoint to detect legacy/open mode
+          fetch('/api/v1/auth/login', { method: 'OPTIONS' }).then((res) => {
+            if (cancelled) return
+            if (res.status === 404 || res.status === 405 || res.status === 403) {
+              setAuthDisabled(true)
+            }
+            setChecking(false)
+          }).catch(() => {
+            if (!cancelled) setChecking(false)
+          })
+        }).catch(() => {
+          if (!cancelled) setChecking(false)
         })
         return
       }
