@@ -26,9 +26,18 @@ export default function Investigate() {
 
   const { windowStart, windowEnd } = useMemo(() => {
     const center = new Date(targetTime).getTime()
+    const halfWindow = windowMin * 60 * 1000
+    let end = center + halfWindow
+    let start = center - halfWindow
+    // Clamp: don't show future time, shift window back to maintain full width
+    const now = Date.now()
+    if (end > now) {
+      end = now
+      start = now - halfWindow * 2
+    }
     return {
-      windowStart: new Date(center - windowMin * 60 * 1000).toISOString(),
-      windowEnd: new Date(center + windowMin * 60 * 1000).toISOString(),
+      windowStart: new Date(start).toISOString(),
+      windowEnd: new Date(end).toISOString(),
     }
   }, [targetTime, windowMin])
 
@@ -134,12 +143,44 @@ export default function Investigate() {
   const [expandedCallId, setExpandedCallId] = useState<number | null>(null)
 
   const loadCall = useAudioStore((s) => s.loadCall)
+  const clearQueue = useAudioStore((s) => s.clearQueue)
+  const addToQueue = useAudioStore((s) => s.addToQueue)
+  const setHistory = useAudioStore((s) => s.setHistory)
   const currentCall = useAudioStore((s) => s.currentCall)
 
   const handleCallClick = useCallback((call: Call) => {
     setSelectedCallId(call.call_id)
-    if (call.audio_url) loadCall(call)
-  }, [loadCall])
+    if (!call.audio_url) return
+
+    // Find the talkgroup group this call belongs to and build sequential playback
+    const group = talkgroupGroups.find(g => g.systemId === call.system_id && g.tgid === call.tgid)
+    if (group) {
+      const sorted = [...group.calls]
+        .filter(c => c.audio_url)
+        .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime())
+      const idx = sorted.findIndex(c => c.call_id === call.call_id)
+
+      loadCall(call)
+      clearQueue()
+      // Queue everything after the clicked call
+      for (let i = idx + 1; i < sorted.length; i++) {
+        addToQueue(sorted[i])
+      }
+      // Seed history with earlier calls (most recent first) for previous button
+      setHistory(sorted.slice(0, idx).reverse().map(c => ({
+        id: c.call_id,
+        callId: c.call_id,
+        systemId: c.system_id,
+        systemName: c.system_name,
+        tgid: c.tgid,
+        tgAlphaTag: c.tg_alpha_tag,
+        duration: c.duration ?? 0,
+        audioUrl: c.audio_url!,
+      })))
+    } else {
+      loadCall(call)
+    }
+  }, [loadCall, clearQueue, addToQueue, setHistory, talkgroupGroups])
 
   const handleCallExpand = useCallback((call: Call) => {
     setExpandedCallId(prev => prev === call.call_id ? null : call.call_id)
@@ -172,6 +213,10 @@ export default function Investigate() {
       if (call) loadCall(call)
     }
   }, [selectedCallId, allCalls, loadCall])
+
+  const handlePanByMs = useCallback((deltaMs: number) => {
+    setTargetTime(new Date(new Date(targetTime).getTime() + deltaMs).toISOString())
+  }, [targetTime, setTargetTime])
 
   useHotkeys('left', handlePanLeft, { preventDefault: true })
   useHotkeys('right', handlePanRight, { preventDefault: true })
@@ -249,7 +294,18 @@ export default function Investigate() {
         onCallClick={handleCallClick}
         onCallExpand={handleCallExpand}
         renderDetailPanel={(call) => <DetailPanel call={call} />}
+        onPan={handlePanByMs}
+        onZoom={(dir) => dir === 'in' ? handleZoomIn() : handleZoomOut()}
       />
+
+      {/* Keyboard hints */}
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground/50">
+        <span><kbd className="rounded border border-border/50 bg-muted/30 px-1 py-0.5 font-mono">←</kbd><kbd className="rounded border border-border/50 bg-muted/30 px-1 py-0.5 font-mono ml-0.5">→</kbd> pan</span>
+        <span><kbd className="rounded border border-border/50 bg-muted/30 px-1 py-0.5 font-mono">+</kbd><kbd className="rounded border border-border/50 bg-muted/30 px-1 py-0.5 font-mono ml-0.5">-</kbd> zoom</span>
+        <span><kbd className="rounded border border-border/50 bg-muted/30 px-1 py-0.5 font-mono">N</kbd> now</span>
+        <span><kbd className="rounded border border-border/50 bg-muted/30 px-1 py-0.5 font-mono">Esc</kbd> close detail</span>
+        <span>scroll to zoom · drag to pan</span>
+      </div>
     </div>
   )
 }
