@@ -9,9 +9,11 @@ import { Trash2 } from 'lucide-react'
 
 export default function Users() {
   const currentUser = useAuthStore((s) => s.user)
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const [users, setUsers] = useState<UserResponse[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [accessDenied, setAccessDenied] = useState(false)
 
   // Create form
   const [newUsername, setNewUsername] = useState('')
@@ -34,22 +36,24 @@ export default function Users() {
       const result = await getUsers()
       setUsers(result.users)
       setError('')
+      setAccessDenied(false)
     } catch (err: any) {
-      setError(err?.data?.error || err?.message || 'Failed to load users')
+      if (err?.status === 403) {
+        setAccessDenied(true)
+      } else {
+        setError(err?.data?.error || err?.message || 'Failed to load users')
+      }
     } finally {
       setLoading(false)
     }
   }
 
+  // Try to fetch users — let the API be the source of truth for access control
   useEffect(() => {
-    if (currentUser?.role === 'admin') {
-      fetchUsers()
-    } else {
-      setLoading(false)
-    }
-  }, [currentUser?.role])
+    fetchUsers()
+  }, [isAuthenticated, currentUser?.role])
 
-  if (currentUser?.role !== 'admin') {
+  if (accessDenied) {
     return (
       <div className="space-y-6">
         <h1 className="text-2xl font-bold">Users</h1>
