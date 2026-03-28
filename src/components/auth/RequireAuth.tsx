@@ -27,8 +27,8 @@ export function RequireAuth({ children }: RequireAuthProps) {
         // Probe the login endpoint to distinguish.
         fetch('/api/v1/auth/login', { method: 'OPTIONS' }).then((res) => {
           if (cancelled) return
-          if (res.status === 404 || res.status === 405) {
-            // Login endpoint doesn't exist — backend running in legacy token mode
+          if (res.status === 404 || res.status === 405 || res.status === 403) {
+            // Login endpoint doesn't exist or is blocked — backend running in legacy/open mode
             setAuthDisabled(true)
           }
           setChecking(false)
