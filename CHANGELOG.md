@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.0.0-pre7 (2026-04-02)
+
+### Bug Fixes
+
+- **Setup detection** — `checkNeedsSetup()` now uses `GET /auth/setup` instead of POST-probing with empty fields, which incorrectly showed "First-Time Setup" even with existing users.
+- **Login page direct navigation** — Navigating directly to `/login` no longer shows infinite "Loading..." spinner. Login now detects auth mode itself via shared `detectAuthMode()`.
+- **Stale cached pages after deploy** — Service worker now uses network-first for navigation requests so users get the latest build immediately. Falls back to cache only when offline. SW update check interval reduced from 1 hour to 5 minutes.
+
+### Refactors
+
+- **Shared auth-init detection** — Extracted `detectAuthMode()` into `src/api/auth-init.ts`, shared between RequireAuth and Login with idempotent short-circuit.
+
 ## 1.0.0-pre6 (2026-04-01)
 
 ### Features
