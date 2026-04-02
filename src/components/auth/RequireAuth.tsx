@@ -1,9 +1,8 @@
 import { useState, useEffect, type ReactNode } from 'react'
 import { Navigate } from 'react-router-dom'
-import { useAuthStore, type AuthMode } from '@/stores/useAuthStore'
+import { useAuthStore } from '@/stores/useAuthStore'
 import { refreshAuth } from '@/api/client'
-
-const VALID_MODES = new Set<AuthMode>(['open', 'token', 'full'])
+import { detectAuthMode } from '@/api/auth-init'
 
 interface RequireAuthProps {
   children: ReactNode
@@ -12,7 +11,6 @@ interface RequireAuthProps {
 export function RequireAuth({ children }: RequireAuthProps) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const setAuth = useAuthStore((s) => s.setAuth)
-  const setAuthInit = useAuthStore((s) => s.setAuthInit)
   const [checking, setChecking] = useState(true)
   const [authRequired, setAuthRequired] = useState(false)
   const [authError, setAuthError] = useState(false)
@@ -25,74 +23,23 @@ export function RequireAuth({ children }: RequireAuthProps) {
 
     let cancelled = false
 
-    async function detectAuthMode() {
-      let mode: AuthMode = 'full'
-      let readToken = ''
-      let jwtEnabled = true
-      let fetchFailed = false
-
-      try {
-        const res = await fetch('/api/v1/auth-init')
-        if (!res.ok) {
-          console.error(`auth-init returned ${res.status} ${res.statusText}`)
-          fetchFailed = true
-        } else {
-          let data: any
-          try {
-            data = await res.json()
-          } catch (parseErr) {
-            console.error('auth-init returned OK but body is not valid JSON:', parseErr)
-            fetchFailed = true
-          }
-
-          if (data && typeof data === 'object') {
-            if (data.mode && VALID_MODES.has(data.mode)) {
-              // New mode-based response (tr-engine v0.10+)
-              mode = data.mode
-              readToken = data.read_token || ''
-              jwtEnabled = data.jwt_enabled ?? false
-            } else if (data.mode) {
-              // Unrecognized mode — fail safe by requiring auth
-              console.warn(`auth-init returned unrecognized mode: "${data.mode}", requiring login`)
-              mode = 'full'
-              jwtEnabled = true
-            } else if ('token' in data) {
-              // Legacy response: { token, guest_access }
-              readToken = data.token || ''
-              if (data.guest_access) {
-                // guest_access means no login required; if there's a read token
-                // treat as full mode with guest read, otherwise truly open
-                mode = readToken ? 'full' : 'open'
-                jwtEnabled = false
-              } else {
-                mode = 'full'
-                jwtEnabled = true
-              }
-            }
-          }
-        }
-      } catch (err) {
-        console.error('auth-init fetch failed:', err)
-        fetchFailed = true
-      }
+    async function init() {
+      const result = await detectAuthMode()
 
       if (cancelled) return
 
-      if (fetchFailed) {
-        // Cannot determine auth mode — show error rather than silently granting access
+      if (!result) {
         setAuthError(true)
         setChecking(false)
         return
       }
 
-      setAuthInit(mode, readToken, jwtEnabled)
-
       // Only full mode with JWT requires login; all other modes skip auth
-      if (mode === 'full' && jwtEnabled) {
-        const result = await refreshAuth()
+      if (result.mode === 'full' && result.jwtEnabled) {
+        const refreshResult = await refreshAuth()
         if (cancelled) return
-        if (result) {
-          setAuth(result.access_token, result.user)
+        if (refreshResult) {
+          setAuth(refreshResult.access_token, refreshResult.user)
         } else {
           setAuthRequired(true)
         }
@@ -101,9 +48,9 @@ export function RequireAuth({ children }: RequireAuthProps) {
       setChecking(false)
     }
 
-    detectAuthMode()
+    init()
     return () => { cancelled = true }
-  }, [isAuthenticated, setAuth, setAuthInit])
+  }, [isAuthenticated, setAuth])
 
   if (checking) {
     return (

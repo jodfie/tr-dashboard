@@ -226,22 +226,10 @@ export async function setupFirstUser(username: string, password: string): Promis
 
 export async function checkNeedsSetup(): Promise<boolean> {
   try {
-    const response = await fetch(`${API_BASE}/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: '', password: '' }),
-    })
-    // If auth endpoint returns 404, auth isn't enabled
-    if (response.status === 404) return false
-    // Check if setup is needed by trying the setup endpoint
-    const setupResponse = await fetch(`${API_BASE}/auth/setup`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: '', password: '' }),
-    })
-    // 400 = validation error = setup is available (no users yet)
-    // 409 = setup already completed (users exist)
-    return setupResponse.status === 400
+    const response = await fetch(`${API_BASE}/auth/setup`)
+    if (!response.ok) return false
+    const data = await response.json()
+    return data.needs_setup === true
   } catch {
     return false
   }
