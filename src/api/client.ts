@@ -36,7 +36,13 @@ import type {
 
 import { useAuthStore, type AuthUser } from '@/stores/useAuthStore'
 
-export const API_BASE = import.meta.env.VITE_API_BASE || '/api/v1'
+declare global {
+  interface Window {
+    __env?: { VITE_API_BASE?: string }
+  }
+}
+
+export const API_BASE = window.__env?.VITE_API_BASE || import.meta.env.VITE_API_BASE || '/api/v1'
 const WRITE_METHODS = new Set(['POST', 'PATCH', 'PUT', 'DELETE'])
 
 class ApiError extends Error {
