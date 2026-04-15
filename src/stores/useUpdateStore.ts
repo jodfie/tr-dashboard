@@ -17,7 +17,7 @@ interface UpdateState {
 export const useUpdateStore = create<UpdateState>()(
   persist(
     (set, get) => ({
-      updateCheckEnabled: true,
+      updateCheckEnabled: import.meta.env.VITE_DISABLE_UPDATE_CHECK !== 'true',
       hasCheckedOnce: false,
       latestVersion: null,
       updateUrl: null,
@@ -28,6 +28,7 @@ export const useUpdateStore = create<UpdateState>()(
       setUpdateInfo: (version, url) => set({ latestVersion: version, updateUrl: url }),
 
       checkForUpdate: async (engineVersion) => {
+        if (import.meta.env.VITE_DISABLE_UPDATE_CHECK === 'true') return
         const { updateCheckEnabled } = get()
         if (!updateCheckEnabled) return
 

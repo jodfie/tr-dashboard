@@ -8,6 +8,7 @@ import pkg from './package.json'
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const authToken = env.TR_AUTH_TOKEN || process.env.TR_AUTH_TOKEN || ''
+  const engineUrl = env.TR_ENGINE_URL
 
   // When JWT auth is active, the browser sends its own Authorization header.
   // Only inject the static auth token if TR_AUTH_TOKEN is set (legacy dev mode).
@@ -73,18 +74,22 @@ export default defineConfig(({ mode }) => {
     server: {
       host: '0.0.0.0',
       allowedHosts: ['eddie', 'localhost'],
-      proxy: {
-        '/api': {
-          target: 'https://tr-engine.luxprimatech.com',
-          changeOrigin: true,
-          ...(authToken ? { headers: proxyHeaders } : {}),
-        },
-        '/health': {
-          target: 'https://tr-engine.luxprimatech.com',
-          changeOrigin: true,
-          ...(authToken ? { headers: proxyHeaders } : {}),
-        },
-      },
+      ...(engineUrl
+        ? {
+            proxy: {
+              '/api': {
+                target: engineUrl,
+                changeOrigin: true,
+                ...(authToken ? { headers: proxyHeaders } : {}),
+              },
+              '/health': {
+                target: engineUrl,
+                changeOrigin: true,
+                ...(authToken ? { headers: proxyHeaders } : {}),
+              },
+            },
+          }
+        : {}),
     },
   }
 })

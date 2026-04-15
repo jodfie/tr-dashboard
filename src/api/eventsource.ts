@@ -7,6 +7,7 @@ import type {
 } from './types'
 
 import { useAuthStore } from '@/stores/useAuthStore'
+import { API_BASE } from './client'
 
 export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'error'
 
@@ -163,7 +164,7 @@ export class SSEManager {
     }
 
     const query = params.toString()
-    return `/api/v1/events/stream${query ? `?${query}` : ''}`
+    return `${API_BASE}/events/stream${query ? `?${query}` : ''}`
   }
 
   private dispatch(event: string, data: unknown): void {
