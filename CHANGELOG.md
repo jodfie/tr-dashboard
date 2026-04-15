@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.0-pre9 (2026-04-15)
+
+### Features
+
+- **Runtime `VITE_API_BASE`** — The pre-built Docker image now supports `VITE_API_BASE` as a container environment variable. An entrypoint script generates a `window.__env` config at startup so users can point the dashboard at their tr-engine without a reverse proxy or custom image build.
+
 ## 1.0.0-pre8 (2026-04-15)
 
 ### Features
