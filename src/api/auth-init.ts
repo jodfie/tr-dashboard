@@ -1,4 +1,5 @@
 import { useAuthStore, type AuthMode } from '@/stores/useAuthStore'
+import { API_BASE } from '@/api/client'
 
 const VALID_MODES = new Set<AuthMode>(['open', 'token', 'full'])
 
@@ -29,7 +30,7 @@ export async function detectAuthMode(): Promise<AuthInitResult | null> {
   let jwtEnabled = true
 
   try {
-    const res = await fetch('/api/v1/auth-init')
+    const res = await fetch(`${API_BASE}/auth-init`)
     if (!res.ok) {
       console.error(`auth-init returned ${res.status} ${res.statusText}`)
       return null

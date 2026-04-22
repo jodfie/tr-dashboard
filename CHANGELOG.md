@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.0-pre10 (2026-04-22)
+
+### Bug Fixes
+
+- **`VITE_API_BASE` auth-init fetch** — When `VITE_API_BASE` is set to an absolute URL, the auth-init request now correctly uses that base URL instead of a hardcoded relative path. Previously, the relative `/api/v1/auth-init` fetch would hit the static file server rather than tr-engine, causing "Could not determine authentication mode" for anyone deploying the dashboard separately from the engine.
+
 ## 1.0.0-pre9 (2026-04-15)
 
 ### Features
