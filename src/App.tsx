@@ -16,12 +16,15 @@ const UnitDetail = lazy(() => import('@/pages/UnitDetail'))
 const Settings = lazy(() => import('@/pages/Settings'))
 const Affiliations = lazy(() => import('@/pages/Affiliations'))
 const TalkgroupDirectory = lazy(() => import('@/pages/TalkgroupDirectory'))
+const CallGroups = lazy(() => import('@/pages/CallGroups'))
+const CallGroupDetail = lazy(() => import('@/pages/CallGroupDetail'))
 const Admin = lazy(() => import('@/pages/Admin'))
 const Transcriptions = lazy(() => import('@/pages/Transcriptions'))
 const Recorders = lazy(() => import('@/pages/Recorders'))
 const SystemDetail = lazy(() => import('@/pages/SystemDetail'))
 const Users = lazy(() => import('@/pages/Users'))
 const Investigate = lazy(() => import('@/pages/Investigate'))
+
 
 export default function App() {
   return (
@@ -41,6 +44,8 @@ export default function App() {
         <Route path="/systems/:id" element={<Suspense fallback={<PageLoader />}><SystemDetail /></Suspense>} />
         <Route path="/affiliations" element={<Suspense fallback={<PageLoader />}><Affiliations /></Suspense>} />
         <Route path="/directory" element={<Suspense fallback={<PageLoader />}><TalkgroupDirectory /></Suspense>} />
+        <Route path="/call-groups" element={<Suspense fallback={<PageLoader />}><CallGroups /></Suspense>} />
+        <Route path="/call-groups/:id" element={<Suspense fallback={<PageLoader />}><CallGroupDetail /></Suspense>} />
         <Route path="/investigate" element={<Suspense fallback={<PageLoader />}><Investigate /></Suspense>} />
         <Route path="/settings" element={<Suspense fallback={<PageLoader />}><Settings /></Suspense>} />
         <Route path="/admin" element={<Suspense fallback={<PageLoader />}><Admin /></Suspense>} />
