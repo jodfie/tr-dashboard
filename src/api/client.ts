@@ -544,21 +544,61 @@ export async function getCall(id: number): Promise<Call> {
   return request(`/calls/${id}`)
 }
 
-// Security tradeoff: <audio> elements cannot send Authorization headers, so
-// we pass the JWT as a query parameter. This exposes the token in server logs,
-// browser history, and Referrer headers. Mitigated by: read-only scope and
-// 1-hour JWT expiry. Long-term: consider opaque blob URLs or a server-side
-// audio proxy to avoid token-in-URL entirely.
 export function getCallAudioUrl(id: number): string {
-  // Only embed short-lived JWT in URL; readToken may be long-lived/static and
-  // should not be leaked in query strings (browser history, Referrer, server logs).
-  // When no JWT is present, Caddy or the proxy injects the read token via header.
-  const { accessToken } = useAuthStore.getState()
-  const base = `${API_BASE}/calls/${id}/audio`
-  if (accessToken) {
-    return `${base}?token=${encodeURIComponent(accessToken)}`
+  return `${API_BASE}/calls/${id}/audio`
+}
+
+async function getReadAuthHeaders(): Promise<Record<string, string>> {
+  let { accessToken, writeToken, readToken } = useAuthStore.getState()
+  if (accessToken && isTokenExpiringSoon(accessToken)) {
+    const refreshed = await attemptRefresh()
+    if (refreshed) {
+      accessToken = useAuthStore.getState().accessToken
+    }
   }
-  return base
+
+  if (accessToken) {
+    return { Authorization: `Bearer ${accessToken}` }
+  }
+  if (writeToken) {
+    return { Authorization: `Bearer ${writeToken}` }
+  }
+  if (readToken) {
+    return { Authorization: `Bearer ${readToken}` }
+  }
+  return {}
+}
+
+async function fetchCallAudioBlob(id: number): Promise<Response> {
+  const url = getCallAudioUrl(id)
+  const headers = {
+    Accept: 'audio/*,*/*',
+    ...(await getReadAuthHeaders()),
+  }
+  return fetch(url, { headers })
+}
+
+export async function getCallAudioBlobUrl(id: number): Promise<string> {
+  let response = await fetchCallAudioBlob(id)
+
+  if (response.status === 401 && useAuthStore.getState().accessToken) {
+    const refreshed = await attemptRefresh()
+    if (refreshed) {
+      response = await fetchCallAudioBlob(id)
+    }
+  }
+
+  if (!response.ok) {
+    let data: unknown
+    try {
+      data = await response.json()
+    } catch {
+      // ignore parse error
+    }
+    throw new ApiError(response.status, `Audio API error: ${response.statusText}`, data)
+  }
+
+  return URL.createObjectURL(await response.blob())
 }
 
 export async function getCallTransmissions(
