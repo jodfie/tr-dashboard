@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
 import { TransmissionTimeline, TransmissionLegend } from './TransmissionTimeline'
 import { useAudioStore, selectIsPlaying, selectIsBlocked, selectRetryCount } from '@/stores/useAudioStore'
+import { getCallAudioBlobUrl } from '@/api/client'
 import { cn, formatDuration, getTalkgroupDisplayName } from '@/lib/utils'
 import { KEYBOARD_SHORTCUTS, AUDIO } from '@/lib/constants'
 import { useMediaSession } from '@/hooks/useMediaSession'
@@ -13,7 +14,7 @@ export function AudioPlayer() {
   const audioRef = useRef<HTMLAudioElement>(null)
   // Ref to prevent redundant play attempts during a single load cycle
   const playAttemptedRef = useRef(false)
-  // Ref to track the current audio URL to detect when we need to reload
+  // Ref to track the current blob URL so we can revoke it on call changes
   const currentUrlRef = useRef<string | null>(null)
 
   const [showHistory, setShowHistory] = useState(false)
@@ -93,18 +94,7 @@ export function AudioPlayer() {
     // Unlock iOS silent mode on first user gesture
     unlockIOSAudio()
 
-    // Set src only if truly empty (avoid reload — breaks iOS gesture chain)
-    if (!audio.src || audio.src === window.location.href) {
-      audio.src = currentCall.audioUrl
-      audio.load()
-      // Wait for loadeddata then play within gesture context
-      audio.addEventListener('loadeddata', () => {
-        audio.play().catch(console.error)
-      }, { once: true })
-      return
-    }
-
-    // Audio already loaded — play immediately (keeps iOS gesture context)
+    // Audio already loaded as a blob URL — play immediately (keeps iOS gesture context)
     audio.play()
       .then(() => {
         // onPlay event will update state to 'playing'
@@ -114,34 +104,51 @@ export function AudioPlayer() {
       })
   }, [currentCall, unlockIOSAudio])
 
-  // Load audio when currentCall changes
+  // Load authorized audio as a blob URL when currentCall changes.
   useEffect(() => {
     const audio = audioRef.current
     if (!audio) return
 
-    if (currentCall) {
-      // Only reload if URL changed
-      if (currentUrlRef.current !== currentCall.audioUrl) {
-        currentUrlRef.current = currentCall.audioUrl
-        playAttemptedRef.current = false
-        audio.src = currentCall.audioUrl
-        audio.load()
-      }
-    } else {
-      currentUrlRef.current = null
-      audio.src = ''
-    }
-  }, [currentCall])
-
-  // Handle retry attempts - force reload when retryCount changes
-  useEffect(() => {
-    const audio = audioRef.current
-    if (!audio || !currentCall || retryCount === 0) return
-
-    // Force reload the audio element for retry
+    let cancelled = false
     playAttemptedRef.current = false
-    audio.load()
-  }, [retryCount, currentCall])
+
+    if (currentUrlRef.current) {
+      URL.revokeObjectURL(currentUrlRef.current)
+      currentUrlRef.current = null
+    }
+
+    if (currentCall) {
+      audio.removeAttribute('src')
+      audio.load()
+
+      getCallAudioBlobUrl(currentCall.callId)
+        .then((blobUrl) => {
+          if (cancelled) {
+            URL.revokeObjectURL(blobUrl)
+            return
+          }
+          currentUrlRef.current = blobUrl
+          audio.src = blobUrl
+          audio.load()
+        })
+        .catch((err) => {
+          if (cancelled) return
+          console.error('Failed to load audio blob:', err)
+          onError()
+        })
+    } else {
+      audio.removeAttribute('src')
+      audio.load()
+    }
+
+    return () => {
+      cancelled = true
+      if (currentUrlRef.current) {
+        URL.revokeObjectURL(currentUrlRef.current)
+        currentUrlRef.current = null
+      }
+    }
+  }, [currentCall, retryCount, onError])
 
   // Handle playback state changes
   useEffect(() => {
